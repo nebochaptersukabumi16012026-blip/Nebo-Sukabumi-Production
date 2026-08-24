@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aistudio.nebosukabumi.pypvca",
+      "sha256_cert_fingerprints": [
+        "FINGERPRINT_SHA256_RELEASE_ANDA_DI_SINI",
+        "FINGERPRINT_SHA256_DEBUG_ANDA_DI_SINI"
+      ]
+    }
+  }
+]

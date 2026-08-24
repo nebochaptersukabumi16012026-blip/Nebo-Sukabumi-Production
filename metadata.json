@@ -1,0 +1,6 @@
+{
+  "name": "Nebo Sukabumi",
+  "description": "Aplikasi manajemen data anggota dan pencatatan uang kas komunitas Nebo Sukabumi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
