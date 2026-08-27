@@ -176,11 +176,11 @@ fun AnggotaListScreen(navController: NavController, viewModel: CommunityViewMode
                                 Text("NRA: ${anggota.nra}", style = MaterialTheme.typography.bodyMedium)
                                 Row(modifier = Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(
-                                        text = if (anggota.statusAktif) "Aktif" else "Nonaktif",
+                                        text = if (anggota.statusAktif == 1) "Aktif" else "Nonaktif",
                                         color = Color.White,
                                         style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier.background(
-                                            color = if (anggota.statusAktif) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error,
+                                            color = if (anggota.statusAktif == 1) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error,
                                             shape = RoundedCornerShape(24.dp)
                                         ).padding(horizontal = 8.dp, vertical = 2.dp)
                                     )
@@ -227,6 +227,7 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
     val context = LocalContext.current
     var selectedImage by remember { mutableStateOf<String?>(null) }
     var paymentToDelete by remember { mutableStateOf<Pembayaran?>(null) }
+    var paymentToEdit by remember { mutableStateOf<Pembayaran?>(null) }
     var showDeleteAnggotaDialog by remember { mutableStateOf(false) }
 
     // Dynamic sync on opening any member
@@ -294,8 +295,8 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
     val cicilanList = memberPayments.filter { it.jenisPembayaran.equals("CICILAN", ignoreCase = true) }
 
     // Dynamic calculation of values
-    val totalKasMember = if (kasList.isNotEmpty()) kasList.sumOf { it.nominal } else anggota.uangKas
-    val totalAnivMember = if (anivList.isNotEmpty()) anivList.sumOf { it.nominal } else anggota.iuranAniv
+    val totalKasMember = maxOf(anggota.uangKas, kasList.sumOf { it.nominal })
+    val totalAnivMember = maxOf(anggota.iuranAniv, anivList.sumOf { it.nominal })
     val totalCicilanPaid = cicilanList.sumOf { it.nominal }
     val sisaCicilanDynamic = if (anggota.hargaBarang > 0.0) maxOf(0.0, anggota.hargaBarang - totalCicilanPaid) else anggota.sisaCicilan
 
@@ -347,12 +348,12 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
         val labelTrx = if (isKas) "Kas" else if (isAniv) "Iuran Anniversary" else p.jenisPembayaran
         AlertDialog(
             onDismissRequest = { paymentToDelete = null },
-            title = { Text("Hapus Transaksi $labelTrx", fontWeight = FontWeight.Bold) },
+            title = { Text("Hapus Riwayat Transaksi $labelTrx", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Hapus transaksi $labelTrx sebesar ${formatRupiah(p.nominal)} milik \"${anggota.nama}\"?\n\n" +
-                    "• Nominal ${if (isKas) "Total Uang Kas" else if (isAniv) "Iuran Anniversary" else "Cicilan"} anggota akan otomatis berkurang sebesar ${formatRupiah(p.nominal)}.\n" +
-                    "• Total Saldo Kas di Dashboard akan otomatis dihitung ulang secara real-time."
+                    "Hapus riwayat transaksi $labelTrx sebesar ${formatRupiah(p.nominal)} milik \"${anggota.nama}\"?\n\n" +
+                    "• Riwayat transaksi ini akan dihapus dari daftar detail.\n" +
+                    "• Akumulasi total ${if (isKas) "kas" else if (isAniv) "iuran anniversary" else "pembayaran"} yang sudah terkumpul sebelumnya akan tetap aman dan tidak berubah."
                 )
             },
             confirmButton = {
@@ -361,7 +362,7 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                         val toDelete = p
                         paymentToDelete = null
                         viewModel.deletePembayaran(toDelete)
-                        Toast.makeText(context, "Transaksi $labelTrx sebesar ${formatRupiah(toDelete.nominal)} berhasil dihapus", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Riwayat transaksi $labelTrx sebesar ${formatRupiah(toDelete.nominal)} berhasil dihapus", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
@@ -370,6 +371,58 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
             },
             dismissButton = {
                 TextButton(onClick = { paymentToDelete = null }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+
+    // Dialog for Editing/Correcting Transaction (Developer only)
+    paymentToEdit?.let { p ->
+        var newNominal by remember { mutableStateOf(p.nominal.toInt().toString()) }
+        var newKeterangan by remember { mutableStateOf(p.keterangan ?: "") }
+        
+        AlertDialog(
+            onDismissRequest = { paymentToEdit = null },
+            title = { Text("Koreksi Transaksi", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Ubah nominal transaksi ini. Sistem akan otomatis menghitung selisih dan menyesuaikan saldo akumulasi.")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = newNominal,
+                        onValueChange = { if (it.all { char -> char.isDigit() }) newNominal = it },
+                        label = { Text("Nominal Baru") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        prefix = { Text("Rp ") }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newKeterangan,
+                        onValueChange = { newKeterangan = it },
+                        label = { Text("Keterangan Koreksi") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val nominalValue = newNominal.toDoubleOrNull() ?: 0.0
+                        viewModel.editPembayaran(p.id, nominalValue, newKeterangan) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
+                                paymentToEdit = null
+                            }
+                        }
+                    }
+                ) {
+                    Text("Simpan Perubahan")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { paymentToEdit = null }) {
                     Text("Batal")
                 }
             }
@@ -508,8 +561,15 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text("No HP: ${anggota.nomorTelepon}", style = MaterialTheme.typography.bodyMedium)
                                         Spacer(modifier = Modifier.height(4.dp))
-                                        val sdf = java.text.SimpleDateFormat("dd MMMM yyyy", java.util.Locale("id", "ID"))
-                                        Text("Tanggal Bergabung: ${sdf.format(java.util.Date(anggota.tanggalBergabung))}", style = MaterialTheme.typography.bodyMedium)
+                                        val displayDate = try {
+                                            val sdf = java.text.SimpleDateFormat("dd MMMM yyyy", java.util.Locale("id", "ID"))
+                                            val inputSdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                            val date = inputSdf.parse(anggota.tanggalBergabung)
+                                            if (date != null) sdf.format(date) else anggota.tanggalBergabung
+                                        } catch (e: Exception) {
+                                            anggota.tanggalBergabung
+                                        }
+                                        Text("Tanggal Bergabung: $displayDate", style = MaterialTheme.typography.bodyMedium)
                                     }
                                 }
                             }
@@ -537,9 +597,9 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("Status Kas", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                     Text(
-                                        if (anggota.statusAktif) "Aktif" else "Tidak Aktif",
+                                        if (anggota.statusAktif == 1) "Aktif" else "Tidak Aktif",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = if (anggota.statusAktif) Color(0xFF4CAF50) else androidx.compose.ui.graphics.Color(0xFFE53935),
+                                        color = if (anggota.statusAktif == 1) Color(0xFF4CAF50) else androidx.compose.ui.graphics.Color(0xFFE53935),
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -629,15 +689,27 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                                             }
                                         }
                                         if (canDeleteTransaction) {
-                                            IconButton(
-                                                onClick = { paymentToDelete = trx },
-                                                modifier = Modifier.size(40.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete, 
-                                                    contentDescription = "Hapus Transaksi Kas", 
-                                                    tint = Color(0xFFEF4444)
-                                                )
+                                            Row {
+                                                IconButton(
+                                                    onClick = { paymentToEdit = trx },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Edit, 
+                                                        contentDescription = "Edit Transaksi", 
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { paymentToDelete = trx },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Delete, 
+                                                        contentDescription = "Hapus Transaksi Kas", 
+                                                        tint = Color(0xFFEF4444)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -705,15 +777,27 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                                             }
                                         }
                                         if (canDeleteTransaction) {
-                                            IconButton(
-                                                onClick = { paymentToDelete = trx },
-                                                modifier = Modifier.size(40.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete, 
-                                                    contentDescription = "Hapus Iuran Anniversary", 
-                                                    tint = Color(0xFFEF4444)
-                                                )
+                                            Row {
+                                                IconButton(
+                                                    onClick = { paymentToEdit = trx },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Edit, 
+                                                        contentDescription = "Edit Transaksi", 
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { paymentToDelete = trx },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Delete, 
+                                                        contentDescription = "Hapus Iuran Anniversary", 
+                                                        tint = Color(0xFFEF4444)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -841,15 +925,27 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                                             }
                                         }
                                         if (canDeleteTransaction) {
-                                            IconButton(
-                                                onClick = { paymentToDelete = trx },
-                                                modifier = Modifier.size(40.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete, 
-                                                    contentDescription = "Hapus Riwayat Cicilan", 
-                                                    tint = Color(0xFFEF4444)
-                                                )
+                                            Row {
+                                                IconButton(
+                                                    onClick = { paymentToEdit = trx },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Edit, 
+                                                        contentDescription = "Edit Transaksi", 
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { paymentToDelete = trx },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Delete, 
+                                                        contentDescription = "Hapus Riwayat Cicilan", 
+                                                        tint = Color(0xFFEF4444)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -904,7 +1000,7 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
             nra = anggota.nra
             alamat = anggota.alamat
             nomorTelepon = anggota.nomorTelepon
-            statusAktif = anggota.statusAktif
+            statusAktif = anggota.statusAktif == 1
             hargaBarangStr = if (anggota.hargaBarang == 0.0) "" else anggota.hargaBarang.toInt().toString()
             lamaCicilanStr = if (anggota.lamaCicilan == 0) "" else anggota.lamaCicilan.toString()
             if (anggota.foto != null) {

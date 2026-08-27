@@ -41,7 +41,14 @@ if ($method == 'POST') {
                     $input_password = $data->password;
                     
                     // Plaintext or bcrypt comparison
-                    $is_valid = ($input_password === $db_password || password_verify($input_password, $db_password));
+                    $is_valid = false;
+                    if ($input_password === $db_password) {
+                        $is_valid = true;
+                    } elseif (function_exists('password_verify']) {
+                        if (password_verify($input_password, $db_password)) {
+                            $is_valid = true;
+                        }
+                    }
                     
                     if ($is_valid) {
                         // Check if they have an approved reset request with matching password_sementara
@@ -50,7 +57,7 @@ if ($method == 'POST') {
                         $username_to_check = !empty($row['nra']) ? $row['nra'] : $row['username'];
                         
                         $stmt_req = $conn->prepare("SELECT id, password_sementara FROM reset_password_requests WHERE nra = :nra AND status = 'Disetujui' LIMIT 1");
-                        $stmt_req->execute([':nra' => $username_to_check]);
+                        $stmt_req->execute(array(':nra' => $username_to_check));
                         $req_row = $stmt_req->fetch(PDO::FETCH_ASSOC);
                         if ($req_row && $input_password === $req_row['password_sementara']) {
                             $require_new_password = true;
@@ -58,63 +65,63 @@ if ($method == 'POST') {
                         }
 
                         error_log("Login sukses untuk user: " . $data->username);
-                        echo json_encode([
+                        echo json_encode(array(
                             "status" => "success",
                             "success" => true,
                             "message" => "Login berhasil",
-                            "data" => [
+                            "data" => array(
                                 "id" => intval($row['id']),
                                 "username" => $row['username'],
                                 "role" => $row['role'],
                                 "require_new_password" => $require_new_password,
                                 "request_id" => $request_id
-                            ]
-                        ]);
+                            )
+                        ));
                     } else {
                         error_log("Login gagal: Password salah untuk user " . $data->username);
-                        echo json_encode([
+                        echo json_encode(array(
                             "status" => "error",
                             "success" => false,
                             "message" => "Password salah"
-                        ]);
+                        ));
                     }
                 } else {
                     error_log("Login gagal: User tidak ditemukan (" . $data->username . ")");
-                    echo json_encode([
+                    echo json_encode(array(
                         "status" => "error",
                         "success" => false,
                         "message" => "User tidak ditemukan"
-                    ]);
+                    ));
                 }
             } else {
                 error_log("Login gagal: Query gagal dieksekusi");
-                echo json_encode([
+                echo json_encode(array(
                     "status" => "error",
                     "success" => false,
                     "message" => "Query gagal dieksekusi"
-                ]);
+                ));
             }
         } catch (PDOException $e) {
             error_log("Login gagal: Database error - " . $e->getMessage());
-            echo json_encode([
+            echo json_encode(array(
                 "status" => "error",
                 "success" => false,
                 "message" => "Database gagal: " . $e->getMessage()
-            ]);
+            ));
         }
     } else {
-        echo json_encode([
+        echo json_encode(array(
             "status" => "error",
             "success" => false,
             "message" => "Username atau password tidak boleh kosong."
-        ]);
+        ));
     }
 } else {
     http_response_code(405);
-    echo json_encode([
+    echo json_encode(array(
         "status" => "error",
         "success" => false,
         "message" => "Method Not Allowed"
-    ]);
+    ));
 }
 ?>

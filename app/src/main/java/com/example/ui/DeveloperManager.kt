@@ -258,7 +258,7 @@ object DeveloperManager {
                         nra = obj.optString("nra", ""),
                         alamat = obj.optString("alamat", ""),
                         nomorTelepon = obj.optString("nomorTelepon", ""),
-                        statusAktif = obj.optBoolean("statusAktif", true),
+                        statusAktif = if (obj.optBoolean("statusAktif", true)) 1 else 0,
                         role = obj.optString("role", "ANGGOTA"),
                         uangKas = obj.optDouble("uangKas", 0.0),
                         iuranAniv = obj.optDouble("iuranAniv", 0.0),

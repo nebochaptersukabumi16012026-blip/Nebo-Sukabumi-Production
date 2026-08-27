@@ -389,11 +389,15 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                                 val nama = doc.getString("nama") ?: ""
                                 val alamat = doc.getString("alamat") ?: ""
                                 val nomorTelepon = doc.getString("no_hp") ?: doc.getString("nomorTelepon") ?: ""
-                                val statusAktif = doc.getBoolean("statusAktif") ?: true
+                                val statusAktifInt = if (doc.get("statusAktif") is Boolean) {
+                                    if (doc.getBoolean("statusAktif") == true) 1 else 0
+                                } else {
+                                    doc.getLong("statusAktif")?.toInt() ?: 1
+                                }
                                 val role = doc.getString("role") ?: "ANGGOTA"
                                 val username = doc.getString("username") ?: ""
                                 val password = doc.getString("password") ?: ""
-                                val tanggalBergabung = doc.getLong("tanggalBergabung") ?: System.currentTimeMillis()
+                                val tanggalBergabung = doc.get("tanggalBergabung")?.toString() ?: ""
                                 val uangKas = doc.getDouble("uangKas") ?: 0.0
                                 val iuranAniv = doc.getDouble("iuranAniv") ?: 0.0
                                 val hargaBarang = doc.getDouble("hargaBarang") ?: 0.0
@@ -410,7 +414,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                                     nra = nra,
                                     alamat = alamat,
                                     nomorTelepon = nomorTelepon,
-                                    statusAktif = statusAktif,
+                                    statusAktif = statusAktifInt,
                                     role = role,
                                     username = username,
                                     password = password,
@@ -1462,7 +1466,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                         nra = nra,
                         alamat = alamat,
                         nomorTelepon = nomorTelepon,
-                        statusAktif = statusAktif,
+                        statusAktif = if (statusAktif) 1 else 0,
                         username = nra, // default username is NRA
                         password = nra, // default password is NRA
                         foto = foto,
@@ -1471,7 +1475,8 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                         sisaCicilan = finalSisaCicilan,
                         lamaCicilan = lamaCicilan,
                         cicilanPerBulan = finalCicilanPerBulan,
-                        totalTagihan = finalTotalTagihan
+                        totalTagihan = finalTotalTagihan,
+                        tanggalBergabung = SimpleDateFormat("yyyy-MM-dd", Locale("id", "ID")).format(Date())
                     )
                     val newId = repository.insertAnggota(anggota)
                     anggota.copy(id = newId.toInt())
@@ -1483,7 +1488,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                             nra = nra,
                             alamat = alamat,
                             nomorTelepon = nomorTelepon,
-                            statusAktif = statusAktif,
+                            statusAktif = if (statusAktif) 1 else 0,
                             foto = foto,
                             hargaBarang = hargaBarang,
                             totalCicilan = hargaBarang,
@@ -1620,29 +1625,8 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
             repository.deletePembayaran(pembayaran, role)
             logAction("Hapus Riwayat", "Pembayaran", "Menghapus riwayat transaksi ${pembayaran.jenisPembayaran} dari ${pembayaran.anggotaNama}")
 
-            // 2. Update member's individual summary in database
-            val member = allAnggota.value.find { it.id == pembayaran.anggotaId }
-                ?: allAnggota.value.find { it.nama.trim().equals(pembayaran.anggotaNama.trim(), ignoreCase = true) }
-            if (member != null) {
-                val remainingMemberPayments = allPembayaran.value.filter {
-                    it.id != pembayaran.id && (it.anggotaId == member.id || it.anggotaNama.trim().equals(member.nama.trim(), ignoreCase = true))
-                }
-                val newKas = if (pembayaran.id < 0 && pembayaran.jenisPembayaran.equals("KAS", ignoreCase = true)) {
-                    0.0
-                } else {
-                    remainingMemberPayments.filter { it.jenisPembayaran.equals("KAS", ignoreCase = true) }.sumOf { it.nominal }
-                }
-                val newAniv = if (pembayaran.id < 0 && pembayaran.jenisPembayaran.equals("ANIV", ignoreCase = true)) {
-                    0.0
-                } else {
-                    remainingMemberPayments.filter { it.jenisPembayaran.equals("ANIV", ignoreCase = true) }.sumOf { it.nominal }
-                }
-                val updatedMember = member.copy(
-                    uangKas = if (pembayaran.jenisPembayaran.equals("KAS", ignoreCase = true)) newKas else member.uangKas,
-                    iuranAniv = if (pembayaran.jenisPembayaran.equals("ANIV", ignoreCase = true)) newAniv else member.iuranAniv
-                )
-                repository.updateAnggota(updatedMember)
-            }
+            // 2. Akumulasi total kas & aniv anggota di profil tetap aman dan tidak berkurang (Non-decreasing on history delete)
+            // Hanya riwayat pembayaran yang dihapus dari daftar detail.
 
             // 3. Trigger immediate API sync to refresh dashboard and detail screens
             repository.syncFromApi()
@@ -1654,6 +1638,23 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                 } catch (e: Exception) {
                     android.util.Log.e("FirestoreSync", "Failed to delete payment: ${e.message}")
                 }
+            }
+        }
+    }
+
+    fun editPembayaran(id: Int, nominalBaru: Double, keterangan: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = repository.editPembayaran(id, nominalBaru, keterangan)
+                if (response.status == "success") {
+                    logAction("Koreksi Transaksi", "Pembayaran", "Koreksi nominal menjadi $nominalBaru")
+                    repository.syncFromApi()
+                    onComplete(true, response.message ?: "Berhasil koreksi data.")
+                } else {
+                    onComplete(false, response.message ?: "Gagal koreksi data.")
+                }
+            } catch (e: Exception) {
+                onComplete(false, "Error: ${e.message}")
             }
         }
     }

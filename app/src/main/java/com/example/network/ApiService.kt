@@ -12,6 +12,7 @@ data class BaseResponse<T>(
     val status: String,
     val message: String? = null,
     val data: T? = null,
+    val total: Int? = null,
     val id: Int? = null
 )
 
@@ -179,7 +180,7 @@ interface ApiService {
     suspend fun getLaporan(): Response<BaseResponse<LaporanResponse>>
 
     @Headers("Cache-Control: no-cache")
-    @GET("anggota.php")
+    @GET("get_anggota.php")
     suspend fun getAnggota(): Response<BaseResponse<List<Anggota>>>
 
     @Headers("Cache-Control: no-cache")
@@ -220,6 +221,9 @@ interface ApiService {
 
     @HTTP(method = "DELETE", path = "pembayaran.php", hasBody = true)
     suspend fun deletePembayaran(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
+
+    @POST("edit_pembayaran.php")
+    suspend fun editPembayaran(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
 
     @POST("delete_riwayat_kas.php")
     suspend fun deleteRiwayatKas(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>

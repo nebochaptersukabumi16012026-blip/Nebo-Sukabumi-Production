@@ -20,13 +20,13 @@ switch ($method) {
             $result['updated_at'] = intval($result['updated_at']);
         }
         
-        echo json_encode([
+        echo json_encode(array(
             "status" => "success",
-            "community_name" => $result['community_name'] ?? 'NEBO Sukabumi',
+            "community_name" => isset($result['community_name']) ? $result['community_name'] : 'NEBO Sukabumi',
             "community_logo" => "https://nebosukabumi.net/images/logo_komunitas.png",
             "community_banner" => "https://nebosukabumi.net/images/dashboard_banner.jpg",
             "data" => $result
-        ]);
+        ));
         break;
     case 'POST':
     case 'PUT':
@@ -53,35 +53,35 @@ switch ($method) {
                 updated_by = :updated_by
                 WHERE id = 1";
             $stmt = $conn->prepare($query);
-            $stmt->execute([
+            $stmt->execute(array(
                 ':community_name' => $data->community_name,
-                ':community_slogan' => $data->community_slogan ?? '',
-                ':community_motto' => $data->community_motto ?? '',
-                ':community_logo' => $data->community_logo ?? '',
-                ':community_banner' => $data->community_banner ?? '',
-                ':community_splash' => $data->community_splash ?? '',
-                ':community_address' => $data->community_address ?? '',
-                ':community_phone' => $data->community_phone ?? '',
-                ':community_email' => $data->community_email ?? '',
-                ':community_website' => $data->community_website ?? '',
-                ':community_facebook' => $data->community_facebook ?? '',
-                ':community_instagram' => $data->community_instagram ?? '',
-                ':community_youtube' => $data->community_youtube ?? '',
-                ':target_aniv' => $data->target_aniv ?? 0,
-                ':target_kas' => $data->target_kas ?? 0,
-                ':login_background' => $data->login_background ?? '',
-                ':profile_banner' => $data->profile_banner ?? '',
-                ':updated_at' => $data->updated_at ?? 0,
-                ':updated_by' => $data->updated_by ?? ''
-            ]);
-            echo json_encode(["status" => "success", "message" => "Pengaturan berhasil diupdate"]);
+                ':community_slogan' => isset($data->community_slogan) ? $data->community_slogan : '',
+                ':community_motto' => isset($data->community_motto) ? $data->community_motto : '',
+                ':community_logo' => isset($data->community_logo) ? $data->community_logo : '',
+                ':community_banner' => isset($data->community_banner) ? $data->community_banner : '',
+                ':community_splash' => isset($data->community_splash) ? $data->community_splash : '',
+                ':community_address' => isset($data->community_address) ? $data->community_address : '',
+                ':community_phone' => isset($data->community_phone) ? $data->community_phone : '',
+                ':community_email' => isset($data->community_email) ? $data->community_email : '',
+                ':community_website' => isset($data->community_website) ? $data->community_website : '',
+                ':community_facebook' => isset($data->community_facebook) ? $data->community_facebook : '',
+                ':community_instagram' => isset($data->community_instagram) ? $data->community_instagram : '',
+                ':community_youtube' => isset($data->community_youtube) ? $data->community_youtube : '',
+                ':target_aniv' => isset($data->target_aniv) ? $data->target_aniv : 0,
+                ':target_kas' => isset($data->target_kas) ? $data->target_kas : 0,
+                ':login_background' => isset($data->login_background) ? $data->login_background : '',
+                ':profile_banner' => isset($data->profile_banner) ? $data->profile_banner : '',
+                ':updated_at' => isset($data->updated_at) ? $data->updated_at : 0,
+                ':updated_by' => isset($data->updated_by) ? $data->updated_by : ''
+            ));
+            echo json_encode(array("status" => "success", "message" => "Pengaturan berhasil diupdate"));
         } else {
-            echo json_encode(["status" => "error", "message" => "Nama komunitas tidak boleh kosong"]);
+            echo json_encode(array("status" => "error", "message" => "Nama komunitas tidak boleh kosong"));
         }
         break;
     default:
         http_response_code(405);
-        echo json_encode(["status" => "error", "message" => "Method Not Allowed"]);
+        echo json_encode(array("status" => "error", "message" => "Method Not Allowed"));
         break;
 }
 ?>

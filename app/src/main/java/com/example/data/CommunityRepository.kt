@@ -497,6 +497,25 @@ class CommunityRepository(
         syncFromApi()
     }
 
+    suspend fun editPembayaran(id: Int, nominalBaru: Double, keterangan: String): BaseResponse<Any> {
+        return try {
+            val response = ApiClient.apiService.editPembayaran(mapOf(
+                "id" to id,
+                "nominal_baru" to nominalBaru,
+                "keterangan" to keterangan
+            ))
+            if (response.isSuccessful) {
+                val body = response.body() ?: BaseResponse("error", "Empty body")
+                syncFromApi()
+                body
+            } else {
+                BaseResponse("error", "HTTP ${response.code()}")
+            }
+        } catch (e: Exception) {
+            BaseResponse("error", e.message)
+        }
+    }
+
     suspend fun clearAllData() {
         _allAnggota.value = emptyList()
         _allPembayaran.value = emptyList()

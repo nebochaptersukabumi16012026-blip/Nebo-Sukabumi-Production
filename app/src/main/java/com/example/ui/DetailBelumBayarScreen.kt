@@ -34,9 +34,9 @@ fun DetailBelumBayarScreen(
     // Mencari anggota aktif yang nilai pembayarannya masih 0.0
     val listTersaring = remember(type, listAnggotaMurni) {
         if (type == "kas") {
-            listAnggotaMurni.filter { it.uangKas == 0.0 && it.statusAktif }
+            listAnggotaMurni.filter { it.uangKas == 0.0 && it.statusAktif == 1 }
         } else {
-            listAnggotaMurni.filter { it.iuranAniv == 0.0 && it.statusAktif }
+            listAnggotaMurni.filter { it.iuranAniv == 0.0 && it.statusAktif == 1 }
         }
     }
 

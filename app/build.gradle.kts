@@ -2,6 +2,7 @@ import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesS
 
 plugins {
   alias(libs.plugins.android.application)
+  alias(libs.plugins.kotlin.android)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
@@ -54,11 +55,18 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+  kotlinOptions {
+    jvmTarget = "11"
+  }
   buildFeatures {
     compose = true
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  packagingOptions {
+    resources.excludes.add("META-INF/LICENSE.md")
+    resources.excludes.add("META-INF/NOTICE.md")
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
@@ -133,9 +141,3 @@ dependencies {
   // "ksp"(libs.moshi.kotlin.codegen)
 }
 
-android {
-    packagingOptions {
-        resources.excludes.add("META-INF/LICENSE.md")
-        resources.excludes.add("META-INF/NOTICE.md")
-    }
-}

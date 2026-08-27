@@ -170,7 +170,7 @@ fun DetailAnggotaScreen(navController: NavController, viewModel: CommunityViewMo
                 },
                 onShare = {
                     val content = filteredList.mapIndexed { index, item ->
-                        "${index + 1}. ${item.nama} (NRA: ${item.nra.ifBlank { "-" }}) - Status: ${if (item.statusAktif) "Aktif" else "Nonaktif"}"
+                        "${index + 1}. ${item.nama} (NRA: ${item.nra.ifBlank { "-" }}) - Status: ${if (item.statusAktif == 1) "Aktif" else "Nonaktif"}"
                     }.joinToString("\n")
                     shareReport(context, "DAFTAR ANGGOTA KOMUNITAS\nTotal Anggota: ${filteredList.size} Orang", content)
                 }
@@ -278,13 +278,13 @@ fun DetailAnggotaScreen(navController: NavController, viewModel: CommunityViewMo
                                 }
                                 
                                 Text(
-                                    text = if (member.statusAktif) "Aktif" else "Nonaktif",
+                                    text = if (member.statusAktif == 1) "Aktif" else "Nonaktif",
                                     color = Color.White,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier
                                         .background(
-                                            color = if (member.statusAktif) Color(0xFF4CAF50) else Color(0xFFF44336),
+                                            color = if (member.statusAktif == 1) Color(0xFF4CAF50) else Color(0xFFF44336),
                                             shape = RoundedCornerShape(12.dp)
                                         )
                                         .padding(horizontal = 10.dp, vertical = 4.dp)

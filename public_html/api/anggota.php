@@ -8,17 +8,17 @@ switch ($method) {
     case 'GET':
         if (isset($_GET['id'])) {
             $stmt = $conn->prepare("SELECT * FROM anggota WHERE id = ?");
-            $stmt->execute([$_GET['id']]);
+            $stmt->execute(array($_GET['id']));
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($row) {
                 $row['id'] = (int)$row['id'];
-                $row['uang_kas'] = (int)($row['uang_kas'] ?? 0);
-                $row['iuran_aniv'] = (int)($row['iuran_aniv'] ?? 0);
-                $row['kas'] = (int)($row['uang_kas'] ?? 0); // Aliasing untuk kompatibilitas UI
-                $row['total_kas'] = (int)($row['uang_kas'] ?? 0);
-                $row['total_aniv'] = (int)($row['iuran_aniv'] ?? 0);
-                $row['status'] = $row['status'] ?? ((isset($row['statusAktif']) && !$row['statusAktif']) ? 'Nonaktif' : 'Aktif');
+                $row['uang_kas'] = (int)(isset($row['uang_kas']) ? $row['uang_kas'] : 0);
+                $row['iuran_aniv'] = (int)(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : 0);
+                $row['kas'] = (int)(isset($row['uang_kas']) ? $row['uang_kas'] : 0); // Aliasing untuk kompatibilitas UI
+                $row['total_kas'] = (int)(isset($row['uang_kas']) ? $row['uang_kas'] : 0);
+                $row['total_aniv'] = (int)(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : 0);
+                $row['status'] = isset($row['status']) ? $row['status'] : ((isset($row['statusAktif']) && !$row['statusAktif']) ? 'Nonaktif' : 'Aktif');
                 $result = $row;
             } else {
                 $result = null;
@@ -30,48 +30,48 @@ switch ($method) {
             foreach ($rows as $row) {
                 $item = $row;
                 $item['id'] = (int)$row['id'];
-                $item['nama'] = $row['nama'] ?? '';
-                $item['nra'] = $row['nra'] ?? '';
-                $item['status'] = $row['status'] ?? ((isset($row['statusAktif']) && !$row['statusAktif']) ? 'Nonaktif' : 'Aktif');
-                $item['no_wa'] = $row['no_wa'] ?? '';
-                $item['uang_kas'] = (int)($row['uang_kas'] ?? 0);
-                $item['iuran_aniv'] = (int)($row['iuran_aniv'] ?? 0);
-                $item['kas'] = (int)($row['uang_kas'] ?? 0); // Aliasing untuk kompatibilitas UI
-                $item['total_kas'] = (int)($row['uang_kas'] ?? 0);
-                $item['total_aniv'] = (int)($row['iuran_aniv'] ?? 0);
+                $item['nama'] = isset($row['nama']) ? $row['nama'] : '';
+                $item['nra'] = isset($row['nra']) ? $row['nra'] : '';
+                $item['status'] = isset($row['status']) ? $row['status'] : ((isset($row['statusAktif']) && !$row['statusAktif']) ? 'Nonaktif' : 'Aktif');
+                $item['no_wa'] = isset($row['no_wa']) ? $row['no_wa'] : '';
+                $item['uang_kas'] = (int)(isset($row['uang_kas']) ? $row['uang_kas'] : 0);
+                $item['iuran_aniv'] = (int)(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : 0);
+                $item['kas'] = (int)(isset($row['uang_kas']) ? $row['uang_kas'] : 0); // Aliasing untuk kompatibilitas UI
+                $item['total_kas'] = (int)(isset($row['uang_kas']) ? $row['uang_kas'] : 0);
+                $item['total_aniv'] = (int)(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : 0);
                 $result[] = $item;
             }
         }
-        echo json_encode(["status" => "success", "data" => $result]);
+        echo json_encode(array("status" => "success", "data" => $result));
         break;
     case 'POST':
         if (!empty($data->nama)) {
             $query = "INSERT INTO anggota (nama, role, no_wa, alamat, tgl_gabung, uang_kas, iuran_aniv, total_cicilan, harga_barang, sisa_cicilan, cicilan_per_bulan, nra, statusAktif, username, password, foto, totalTagihan, lamaCicilan) 
                       VALUES (:nama, :role, :no_wa, :alamat, :tgl_gabung, :uang_kas, :iuran_aniv, :total_cicilan, :harga_barang, :sisa_cicilan, :cicilan_per_bulan, :nra, :statusAktif, :username, :password, :foto, :totalTagihan, :lamaCicilan)";
             $stmt = $conn->prepare($query);
-            $stmt->execute([
+            $stmt->execute(array(
                 ':nama' => $data->nama,
-                ':role' => $data->role ?? 'Anggota',
-                ':no_wa' => $data->no_wa ?? '',
-                ':alamat' => $data->alamat ?? '',
-                ':tgl_gabung' => $data->tgl_gabung ?? '',
-                ':uang_kas' => $data->uang_kas ?? 0,
-                ':iuran_aniv' => $data->iuran_aniv ?? 0,
-                ':total_cicilan' => $data->total_cicilan ?? 0,
-                ':harga_barang' => $data->harga_barang ?? 0,
-                ':sisa_cicilan' => $data->sisa_cicilan ?? 0,
-                ':cicilan_per_bulan' => $data->cicilan_per_bulan ?? 0,
-                ':nra' => $data->nra ?? '',
+                ':role' => isset($data->role) ? $data->role : 'Anggota',
+                ':no_wa' => isset($data->no_wa) ? $data->no_wa : '',
+                ':alamat' => isset($data->alamat) ? $data->alamat : '',
+                ':tgl_gabung' => isset($data->tgl_gabung) ? $data->tgl_gabung : '',
+                ':uang_kas' => isset($data->uang_kas) ? $data->uang_kas : 0,
+                ':iuran_aniv' => isset($data->iuran_aniv) ? $data->iuran_aniv : 0,
+                ':total_cicilan' => isset($data->total_cicilan) ? $data->total_cicilan : 0,
+                ':harga_barang' => isset($data->harga_barang) ? $data->harga_barang : 0,
+                ':sisa_cicilan' => isset($data->sisa_cicilan) ? $data->sisa_cicilan : 0,
+                ':cicilan_per_bulan' => isset($data->cicilan_per_bulan) ? $data->cicilan_per_bulan : 0,
+                ':nra' => isset($data->nra) ? $data->nra : '',
                 ':statusAktif' => isset($data->statusAktif) ? ($data->statusAktif ? 1 : 0) : 1,
-                ':username' => $data->username ?? '',
-                ':password' => $data->password ?? '',
-                ':foto' => $data->foto ?? null,
-                ':totalTagihan' => $data->totalTagihan ?? 0,
-                ':lamaCicilan' => $data->lamaCicilan ?? 0
-            ]);
-            echo json_encode(["status" => "success", "message" => "Anggota berhasil ditambahkan", "id" => $conn->lastInsertId()]);
+                ':username' => isset($data->username) ? $data->username : '',
+                ':password' => isset($data->password) ? $data->password : '',
+                ':foto' => isset($data->foto) ? $data->foto : null,
+                ':totalTagihan' => isset($data->totalTagihan) ? $data->totalTagihan : 0,
+                ':lamaCicilan' => isset($data->lamaCicilan) ? $data->lamaCicilan : 0
+            ));
+            echo json_encode(array("status" => "success", "message" => "Anggota berhasil ditambahkan", "id" => $conn->lastInsertId()));
         } else {
-            echo json_encode(["status" => "error", "message" => "Data nama tidak boleh kosong"]);
+            echo json_encode(array("status" => "error", "message" => "Data nama tidak boleh kosong"));
         }
         break;
     case 'PUT':
@@ -82,7 +82,7 @@ switch ($method) {
                       username=:username, password=:password, foto=:foto, totalTagihan=:totalTagihan, lamaCicilan=:lamaCicilan 
                       WHERE id=:id";
             $stmt = $conn->prepare($query);
-            $stmt->execute([
+            $stmt->execute(array(
                 ':nama' => $data->nama,
                 ':role' => $data->role,
                 ':no_wa' => $data->no_wa,
@@ -94,32 +94,32 @@ switch ($method) {
                 ':harga_barang' => $data->harga_barang,
                 ':sisa_cicilan' => $data->sisa_cicilan,
                 ':cicilan_per_bulan' => $data->cicilan_per_bulan,
-                ':nra' => $data->nra ?? '',
+                ':nra' => isset($data->nra) ? $data->nra : '',
                 ':statusAktif' => isset($data->statusAktif) ? ($data->statusAktif ? 1 : 0) : 1,
-                ':username' => $data->username ?? '',
-                ':password' => $data->password ?? '',
-                ':foto' => $data->foto ?? null,
-                ':totalTagihan' => $data->totalTagihan ?? 0,
-                ':lamaCicilan' => $data->lamaCicilan ?? 0,
+                ':username' => isset($data->username) ? $data->username : '',
+                ':password' => isset($data->password) ? $data->password : '',
+                ':foto' => isset($data->foto) ? $data->foto : null,
+                ':totalTagihan' => isset($data->totalTagihan) ? $data->totalTagihan : 0,
+                ':lamaCicilan' => isset($data->lamaCicilan) ? $data->lamaCicilan : 0,
                 ':id' => $data->id
-            ]);
-            echo json_encode(["status" => "success", "message" => "Data anggota berhasil diupdate"]);
+            ));
+            echo json_encode(array("status" => "success", "message" => "Data anggota berhasil diupdate"));
         } else {
-            echo json_encode(["status" => "error", "message" => "ID anggota tidak ditemukan"]);
+            echo json_encode(array("status" => "error", "message" => "ID anggota tidak ditemukan"));
         }
         break;
     case 'DELETE':
         if (!empty($data->id)) {
             $stmt = $conn->prepare("DELETE FROM anggota WHERE id = ?");
-            $stmt->execute([$data->id]);
-            echo json_encode(["status" => "success", "message" => "Data anggota berhasil dihapus"]);
+            $stmt->execute(array($data->id));
+            echo json_encode(array("status" => "success", "message" => "Data anggota berhasil dihapus"));
         } else {
-            echo json_encode(["status" => "error", "message" => "ID anggota tidak ditemukan"]);
+            echo json_encode(array("status" => "error", "message" => "ID anggota tidak ditemukan"));
         }
         break;
     default:
         http_response_code(405);
-        echo json_encode(["status" => "error", "message" => "Method Not Allowed"]);
+        echo json_encode(array("status" => "error", "message" => "Method Not Allowed"));
         break;
 }
 ?>

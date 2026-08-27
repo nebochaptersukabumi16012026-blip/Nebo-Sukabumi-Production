@@ -39,11 +39,11 @@ if (isset($data->user_role)) {
 
 if (empty($role) || strtolower($role) !== 'developer') {
     http_response_code(403);
-    echo json_encode([
+    echo json_encode(array(
         "status" => "error",
         "message" => "Akses Ditolak!",
         "db_error" => "Unauthorized: Only developer role can delete riwayat records."
-    ]);
+    ));
     exit();
 }
 
@@ -96,10 +96,10 @@ if ($id_anggota <= 0 && $extractedMemberId > 0) {
 
 if ($id <= 0 && $id_anggota <= 0) {
     http_response_code(400);
-    echo json_encode([
+    echo json_encode(array(
         "status" => "error",
         "message" => "ID transaksi atau ID Anggota tidak valid"
-    ]);
+    ));
     exit();
 }
 
@@ -109,13 +109,13 @@ try {
     // Temukan ID Anggota jika belum ada
     if ($id > 0 && $id_anggota <= 0) {
         $stmt_find = $conn->prepare("SELECT id_anggota FROM riwayat_aniv WHERE id = ?");
-        $stmt_find->execute([$id]);
+        $stmt_find->execute(array($id));
         $row_ra = $stmt_find->fetch(PDO::FETCH_ASSOC);
         if ($row_ra) {
             $id_anggota = intval($row_ra['id_anggota']);
         } else {
             $stmt_find_pem = $conn->prepare("SELECT anggotaId FROM pembayaran WHERE id = ?");
-            $stmt_find_pem->execute([$id]);
+            $stmt_find_pem->execute(array($id));
             $row_pem = $stmt_find_pem->fetch(PDO::FETCH_ASSOC);
             if ($row_pem) {
                 $id_anggota = intval($row_pem['anggotaId']);
@@ -126,67 +126,60 @@ try {
     // A. HAPUS BARIS TRANSAKSI SPESIFIK DARI TABEL riwayat_aniv, pembayaran, dan iuran_anniversary
     if ($id > 0) {
         $stmt_del_ra = $conn->prepare("DELETE FROM riwayat_aniv WHERE id = ?");
-        $stmt_del_ra->execute([$id]);
+        $stmt_del_ra->execute(array($id));
 
         $stmt_del_pem = $conn->prepare("DELETE FROM pembayaran WHERE id = ?");
-        $stmt_del_pem->execute([$id]);
+        $stmt_del_pem->execute(array($id));
 
         $stmt_del_ia = $conn->prepare("DELETE FROM iuran_anniversary WHERE id = ?");
-        $stmt_del_ia->execute([$id]);
+        $stmt_del_ia->execute(array($id));
     }
 
     // B. JIKA ID <= 0 DAN ID ANGGOTA VALID (HAPUS SEMUA RIWAYAT ANIV ANGGOTA TERSEBUT)
     if ($id <= 0 && $id_anggota > 0) {
         $stmt_del_all_ra = $conn->prepare("DELETE FROM riwayat_aniv WHERE id_anggota = ?");
-        $stmt_del_all_ra->execute([$id_anggota]);
+        $stmt_del_all_ra->execute(array($id_anggota));
 
         $stmt_del_all_ia = $conn->prepare("DELETE FROM iuran_anniversary WHERE anggota_id = ?");
-        $stmt_del_all_ia->execute([$id_anggota]);
+        $stmt_del_all_ia->execute(array($id_anggota));
 
         $stmt_del_all_pem = $conn->prepare("DELETE FROM pembayaran WHERE anggotaId = ? AND UPPER(jenisPembayaran) = 'ANIV'");
-        $stmt_del_all_pem->execute([$id_anggota]);
+        $stmt_del_all_pem->execute(array($id_anggota));
     }
 
-    // C. UPDATE AKUMULASI INDIVIDUAL ANGGOTA DI TABEL anggota
-    if ($id_anggota > 0) {
-        $stmt_upd_anggota = $conn->prepare("
-            UPDATE anggota 
-            SET iuran_aniv = (SELECT COALESCE(SUM(nominal), 0) FROM riwayat_aniv WHERE id_anggota = :id_anggota) 
-            WHERE id = :id_anggota
-        ");
-        $stmt_upd_anggota->execute([':id_anggota' => $id_anggota]);
-    }
+    // C. AKUMULASI ANGGOTA DAN SALDO UTAMA TETAP UTUH (NON-DECREASING)
+    // Nominal iuran_aniv anggota di profil dan saldo akumulasi di dashboard utama tidak dikurangi saat riwayat dihapus.
 
     $conn->commit();
 
     // D. KEMBALIKAN RESPONSE JSON SUKSES
     http_response_code(200);
-    echo json_encode([
+    echo json_encode(array(
         "status" => "success",
         "message" => "Riwayat anggota berhasil dihapus tanpa mengubah saldo utama",
         "deleted_id" => $id,
         "id_anggota" => $id_anggota
-    ]);
+    ));
 
 } catch (PDOException $e) {
     if (isset($conn) && $conn->inTransaction()) {
         $conn->rollBack();
     }
     http_response_code(500);
-    echo json_encode([
+    echo json_encode(array(
         "status" => "error",
         "message" => "Gagal menghapus riwayat dari database",
         "db_error" => $e->getMessage()
-    ]);
+    ));
 } catch (Exception $e) {
     if (isset($conn) && $conn->inTransaction()) {
         $conn->rollBack();
     }
     http_response_code(500);
-    echo json_encode([
+    echo json_encode(array(
         "status" => "error",
         "message" => "Gagal menghapus riwayat dari database",
         "db_error" => $e->getMessage()
-    ]);
+    ));
 }
 ?>

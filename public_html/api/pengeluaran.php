@@ -8,29 +8,48 @@ switch ($method) {
     case 'GET':
         if (isset($_GET['id'])) {
             $stmt = $conn->prepare("SELECT * FROM pengeluaran WHERE id = ?");
-            $stmt->execute([$_GET['id']]);
+            $stmt->execute(array($_GET['id']));
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
         } else {
             $stmt = $conn->query("SELECT * FROM pengeluaran ORDER BY tanggal DESC");
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
-        echo json_encode(["status" => "success", "data" => $result]);
+        echo json_encode(array("status" => "success", "data" => $result));
         break;
     case 'POST':
         if (!empty($data->keterangan) && isset($data->nominal) && !empty($data->tanggal) && !empty($data->jenis_kas)) {
             $query = "INSERT INTO pengeluaran (keterangan, nominal, tanggal, jenis_kas, created_by) 
                       VALUES (:keterangan, :nominal, :tanggal, :jenis_kas, :created_by)";
             $stmt = $conn->prepare($query);
-            $stmt->execute([
+            $stmt->execute(array(
                 ':keterangan' => $data->keterangan,
                 ':nominal' => $data->nominal,
                 ':tanggal' => $data->tanggal,
                 ':jenis_kas' => $data->jenis_kas,
-                ':created_by' => $data->created_by ?? 'Sistem'
-            ]);
-            echo json_encode(["status" => "success", "message" => "Pengeluaran berhasil dicatat", "id" => $conn->lastInsertId()]);
+                ':created_by' => isset($data->created_by) ? $data->created_by : 'Sistem'
+            ));
+            
+            // UPDATE SALDO AKUMULASI (Locked total)
+            try {
+                $jenis_kas_mapped = 'kas_utama';
+                $jk_lower = strtolower($data->jenis_kas);
+                if (in_array($jk_lower, array('kas_anniversary', 'kas anniversary', 'kas_aniv', 'kas aniv'))) {
+                    $jenis_kas_mapped = 'kas_aniv';
+                } elseif (in_array($jk_lower, array('kas_keliling', 'kas keliling'))) {
+                    $jenis_kas_mapped = 'kas_keliling';
+                }
+                
+                $stmt_master = $conn->prepare("
+                    INSERT INTO saldo_akumulasi (jenis_kas, total_akumulasi_keluar) 
+                    VALUES (?, ?) 
+                    ON DUPLICATE KEY UPDATE total_akumulasi_keluar = total_akumulasi_keluar + ?
+                ");
+                $stmt_master->execute(array($jenis_kas_mapped, $data->nominal, $data->nominal));
+            } catch (Exception $e_master) {}
+
+            echo json_encode(array("status" => "success", "message" => "Pengeluaran berhasil dicatat", "id" => $conn->lastInsertId()));
         } else {
-            echo json_encode(["status" => "error", "message" => "Data tidak lengkap"]);
+            echo json_encode(array("status" => "error", "message" => "Data tidak lengkap"));
         }
         break;
     case 'PUT':
@@ -38,31 +57,31 @@ switch ($method) {
             $query = "UPDATE pengeluaran SET keterangan=:keterangan, nominal=:nominal, tanggal=:tanggal, 
                       jenis_kas=:jenis_kas, created_by=:created_by WHERE id=:id";
             $stmt = $conn->prepare($query);
-            $stmt->execute([
+            $stmt->execute(array(
                 ':keterangan' => $data->keterangan,
                 ':nominal' => $data->nominal,
                 ':tanggal' => $data->tanggal,
                 ':jenis_kas' => $data->jenis_kas,
                 ':created_by' => $data->created_by,
                 ':id' => $data->id
-            ]);
-            echo json_encode(["status" => "success", "message" => "Data pengeluaran berhasil diupdate"]);
+            ));
+            echo json_encode(array("status" => "success", "message" => "Data pengeluaran berhasil diupdate"));
         } else {
-            echo json_encode(["status" => "error", "message" => "ID tidak ditemukan"]);
+            echo json_encode(array("status" => "error", "message" => "ID tidak ditemukan"));
         }
         break;
     case 'DELETE':
         if (!empty($data->id)) {
             $stmt = $conn->prepare("DELETE FROM pengeluaran WHERE id = ?");
-            $stmt->execute([$data->id]);
-            echo json_encode(["status" => "success", "message" => "Data pengeluaran berhasil dihapus"]);
+            $stmt->execute(array($data->id));
+            echo json_encode(array("status" => "success", "message" => "Data pengeluaran berhasil dihapus"));
         } else {
-            echo json_encode(["status" => "error", "message" => "ID tidak ditemukan"]);
+            echo json_encode(array("status" => "error", "message" => "ID tidak ditemukan"));
         }
         break;
     default:
         http_response_code(405);
-        echo json_encode(["status" => "error", "message" => "Method Not Allowed"]);
+        echo json_encode(array("status" => "error", "message" => "Method Not Allowed"));
         break;
 }
 ?>
