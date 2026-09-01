@@ -26,14 +26,14 @@ switch ($method) {
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             echo json_encode(array("status" => "success", "data" => $result));
         } else {
-            $stmt = $conn->query("SELECT * FROM kas_keliling ORDER BY tahun DESC, bulan DESC");
+            $stmt = $conn->query("SELECT * FROM kas_keliling ORDER BY tahun DESC, bulan DESC, id DESC");
             $transaksi = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // SQL Aggregate SUM calculation KHUSUS tabel kas_keliling
-            $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
+            // Rekapitulasi dinamis menggunakan SUM aggregate dari kolom nominal
+            $stmt_in = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pemasukan' OR LOWER(jenis_transaksi) = 'pemasukan' OR (jenis = '' AND jenis_transaksi = '')");
             $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
+            $stmt_out = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pengeluaran' OR LOWER(jenis_transaksi) = 'pengeluaran'");
             $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $saldo = max(0, $total_pemasukan - $total_pengeluaran);
@@ -48,25 +48,31 @@ switch ($method) {
         }
         break;
     case 'POST':
-        if (!empty($data->bulan) && !empty($data->tahun) && isset($data->total_pemasukan)) {
-            $pengeluaran = isset($data->total_pengeluaran) ? $data->total_pengeluaran : 0;
-            $saldo = $data->total_pemasukan - $pengeluaran;
-            $query = "INSERT INTO kas_keliling (bulan, tahun, total_pemasukan, total_pengeluaran, saldo, catatan) 
-                      VALUES (:bulan, :tahun, :pemasukan, :pengeluaran, :saldo, :catatan)";
+        // Redirect or handle POST as adding single transaction
+        $bulan = isset($data->bulan) ? trim($data->bulan) : '';
+        $tahun = isset($data->tahun) ? trim($data->tahun) : '';
+        $nominal = isset($data->nominal) ? floatval($data->nominal) : 0;
+        $jenis = isset($data->jenis) ? strtolower(trim($data->jenis)) : (isset($data->jenis_transaksi) ? strtolower(trim($data->jenis_transaksi)) : 'pemasukan');
+        $catatan = isset($data->catatan) ? trim($data->catatan) : (isset($data->keterangan) ? trim($data->keterangan) : '');
+        $tanggal = isset($data->tanggal) ? trim($data->tanggal) : date('Y-m-d');
+
+        if (!empty($bulan) && !empty($tahun) && $nominal > 0) {
+            $query = "INSERT INTO kas_keliling (bulan, tahun, nominal, jenis, catatan, tanggal) VALUES (:bulan, :tahun, :nominal, :jenis, :catatan, :tanggal)";
             $stmt = $conn->prepare($query);
             $stmt->execute(array(
-                ':bulan' => $data->bulan,
-                ':tahun' => $data->tahun,
-                ':pemasukan' => $data->total_pemasukan,
-                ':pengeluaran' => $pengeluaran,
-                ':saldo' => $saldo,
-                ':catatan' => isset($data->catatan) ? $data->catatan : ''
+                ':bulan' => $bulan,
+                ':tahun' => $tahun,
+                ':nominal' => $nominal,
+                ':jenis' => $jenis,
+                ':catatan' => $catatan,
+                ':tanggal' => $tanggal
             ));
+            $insertedId = $conn->lastInsertId();
 
-            $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
+            $stmt_in = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pemasukan' OR LOWER(jenis_transaksi) = 'pemasukan' OR (jenis = '' AND jenis_transaksi = '')");
             $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
+            $stmt_out = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pengeluaran' OR LOWER(jenis_transaksi) = 'pengeluaran'");
             $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $saldo = max(0, $total_pemasukan - $total_pengeluaran);
@@ -74,36 +80,40 @@ switch ($method) {
             echo json_encode(array(
                 "status" => "success", 
                 "message" => "Data kas keliling berhasil ditambahkan", 
-                "id" => $conn->lastInsertId(),
+                "id" => $insertedId,
                 "total_pemasukan" => $total_pemasukan,
                 "total_pengeluaran" => $total_pengeluaran,
                 "saldo" => $saldo
             ));
         } else {
-            echo json_encode(array("status" => "error", "message" => "Data bulan, tahun, dan pemasukan wajib diisi"));
+            echo json_encode(array("status" => "error", "message" => "Bulan, tahun, dan nominal wajib diisi"));
         }
         break;
     case 'PUT':
         if (!empty($data->id)) {
-            $pengeluaran = isset($data->total_pengeluaran) ? $data->total_pengeluaran : 0;
-            $saldo = $data->total_pemasukan - $pengeluaran;
-            $query = "UPDATE kas_keliling SET bulan=:bulan, tahun=:tahun, total_pemasukan=:pemasukan, 
-                      total_pengeluaran=:pengeluaran, saldo=:saldo, catatan=:catatan WHERE id=:id";
+            $bulan = isset($data->bulan) ? trim($data->bulan) : '';
+            $tahun = isset($data->tahun) ? trim($data->tahun) : '';
+            $nominal = isset($data->nominal) ? floatval($data->nominal) : 0;
+            $jenis = isset($data->jenis) ? strtolower(trim($data->jenis)) : 'pemasukan';
+            $catatan = isset($data->catatan) ? trim($data->catatan) : '';
+            $tanggal = isset($data->tanggal) ? trim($data->tanggal) : date('Y-m-d');
+
+            $query = "UPDATE kas_keliling SET bulan=:bulan, tahun=:tahun, nominal=:nominal, jenis=:jenis, catatan=:catatan, tanggal=:tanggal WHERE id=:id";
             $stmt = $conn->prepare($query);
             $stmt->execute(array(
-                ':bulan' => $data->bulan,
-                ':tahun' => $data->tahun,
-                ':pemasukan' => $data->total_pemasukan,
-                ':pengeluaran' => $pengeluaran,
-                ':saldo' => $saldo,
-                ':catatan' => isset($data->catatan) ? $data->catatan : '',
+                ':bulan' => $bulan,
+                ':tahun' => $tahun,
+                ':nominal' => $nominal,
+                ':jenis' => $jenis,
+                ':catatan' => $catatan,
+                ':tanggal' => $tanggal,
                 ':id' => $data->id
             ));
 
-            $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
+            $stmt_in = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pemasukan' OR LOWER(jenis_transaksi) = 'pemasukan'");
             $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
+            $stmt_out = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pengeluaran' OR LOWER(jenis_transaksi) = 'pengeluaran'");
             $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $saldo = max(0, $total_pemasukan - $total_pengeluaran);
@@ -131,10 +141,10 @@ switch ($method) {
             $stmt = $conn->prepare("DELETE FROM kas_keliling WHERE id = ?");
             $stmt->execute(array($deleteId));
 
-            $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
+            $stmt_in = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pemasukan' OR LOWER(jenis_transaksi) = 'pemasukan'");
             $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
+            $stmt_out = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pengeluaran' OR LOWER(jenis_transaksi) = 'pengeluaran'");
             $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $saldo = max(0, $total_pemasukan - $total_pengeluaran);

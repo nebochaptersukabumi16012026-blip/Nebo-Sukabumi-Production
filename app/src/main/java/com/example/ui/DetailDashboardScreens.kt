@@ -574,16 +574,13 @@ fun DetailUangKasScreen(navController: NavController, viewModel: CommunityViewMo
                     }
                 },
                 onShare = {
-                    val contentStr = """
-                        Ringkasan Kas Komunitas:
-                        - Total Pemasukan: ${formatRupiah(totalPemasukan)}
-                        - Total Pengeluaran: ${formatRupiah(totalPengeluaran)}
-                        - Saldo Kas Saat Ini: ${formatRupiah(saldoSaatIni)}
+                    val daftarTeks = filteredTransactions.mapIndexed { index, item ->
+                        "${index + 1}. ${item.nama}: ${formatRupiah(item.nominal)} (${item.tanggal})"
+                    }.joinToString("\n")
 
-                        Daftar Anggota yang Sudah Membayar Kas (${filteredTransactions.size} Transaksi):
-                        ${filteredTransactions.mapIndexed { idx, it -> "${idx+1}. ${it.nama} (${it.nra}): ${formatRupiah(it.nominal)} - ${it.tanggal}" }.joinToString("\n")}
-                    """.trimIndent()
-                    shareReport(context, "LAPORAN KEUANGAN UANG KAS", contentStr)
+                    val teksLaporan = "Ijin lapor pak uang yang terkumpul dan data yang masuk\n\nLAPORAN KEUANGAN UANG KAS\n\nRingkasan Kas:\n- Total Pemasukan: ${formatRupiah(totalPemasukan)}\n- Total Pengeluaran: ${formatRupiah(totalPengeluaran)}\n- Saldo Kas Saat Ini: ${formatRupiah(saldoSaatIni)}\n\nDaftar Pembayaran Kas Terakhir:\n$daftarTeks"
+
+                    shareReport(context, "", teksLaporan)
                 }
             )
 

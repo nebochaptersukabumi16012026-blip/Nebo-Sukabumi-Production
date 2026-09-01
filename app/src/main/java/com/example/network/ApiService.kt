@@ -236,10 +236,10 @@ interface ApiService {
     suspend fun getPengeluaran(): Response<okhttp3.ResponseBody>
 
     @POST("pengeluaran.php")
-    suspend fun addPengeluaran(@Body pengeluaran: Map<String, Any?>): Response<BaseResponse<Any>>
+    suspend fun addPengeluaran(@Body pengeluaran: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
 
     @PUT("pengeluaran.php")
-    suspend fun updatePengeluaran(@Body pengeluaran: Map<String, Any?>): Response<BaseResponse<Any>>
+    suspend fun updatePengeluaran(@Body pengeluaran: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
 
     @HTTP(method = "DELETE", path = "pengeluaran.php", hasBody = true)
     suspend fun deletePengeluaran(@Body req: Map<String, Int>): Response<BaseResponse<Any>>

@@ -268,8 +268,10 @@ try {
     $kk_cols = array(
         "nra" => "VARCHAR(255) DEFAULT ''",
         "nominal" => "DOUBLE DEFAULT 0",
-        "tanggal" => "BIGINT DEFAULT 0",
+        "tanggal" => "VARCHAR(50) DEFAULT ''",
         "keterangan" => "TEXT",
+        "jenis" => "VARCHAR(50) DEFAULT 'pemasukan'",
+        "catatan" => "TEXT",
         "jenis_transaksi" => "VARCHAR(50) DEFAULT 'Pemasukan'",
         "bulan" => "VARCHAR(50) DEFAULT ''",
         "tahun" => "VARCHAR(20) DEFAULT ''",
