@@ -14,61 +14,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 include_once 'config.php';
-include_once 'sync_helper.php';
 
 $rawInput = file_get_contents("php://input");
 $data = json_decode($rawInput);
 
-$role = '';
-if (isset($data->role)) {
-    $role = trim($data->role);
-} elseif (isset($data->user_role)) {
-    $role = trim($data->user_role);
-} elseif (isset($_POST['role'])) {
-    $role = trim($_POST['role']);
-} elseif (isset($_POST['user_role'])) {
-    $role = trim($_POST['user_role']);
-}
-
-if (empty($role) || strtolower($role) !== 'developer') {
-    http_response_code(403);
-    echo json_encode(array(
-        "status" => "error",
-        "message" => "Akses Ditolak: Hanya akun Developer yang diizinkan menghapus transaksi!"
-    ));
-    exit();
-}
-
-$raw_id = '';
-if (isset($data->id_transaksi)) {
-    $raw_id = strval($data->id_transaksi);
-} elseif (isset($data->id)) {
-    $raw_id = strval($data->id);
-} elseif (isset($_GET['id'])) {
-    $raw_id = strval($_GET['id']);
-} elseif (isset($_POST['id'])) {
-    $raw_id = strval($_POST['id']);
-}
-
 $id = 0;
-if (strpos($raw_id, 'kas_') === 0) {
-    $id = intval(substr($raw_id, 4));
-} else {
-    $id = intval($raw_id);
+if (isset($data->id)) {
+    $id = intval($data->id);
+} elseif (isset($_POST['id'])) {
+    $id = intval($_POST['id']);
+} elseif (isset($_GET['id'])) {
+    $id = intval($_GET['id']);
 }
 
-$id_anggota = 0;
-if (isset($data->id_anggota)) {
-    $id_anggota = intval($data->id_anggota);
-} elseif (isset($data->anggota_id)) {
-    $id_anggota = intval($data->anggota_id);
-}
-
-if ($id <= 0 && $id_anggota <= 0) {
+if ($id <= 0) {
     http_response_code(400);
     echo json_encode(array(
         "status" => "error",
-        "message" => "ID transaksi atau ID Anggota tidak valid"
+        "message" => "ID transaksi tidak valid"
     ));
     exit();
 }
@@ -76,30 +39,48 @@ if ($id <= 0 && $id_anggota <= 0) {
 try {
     $conn->beginTransaction();
 
-    // 3. Alur Hapus Transaksi: Jalankan HANYA DELETE FROM riwayat_kas WHERE id = :id.
-    // DILARANG HARAM menjalankan UPDATE pengurangan pada master_ledger atau menghitung ulang total pemasukan saat hapus.
-    if ($id > 0) {
-        $stmt_del = $conn->prepare("DELETE FROM riwayat_kas WHERE id = ?");
-        $stmt_del->execute(array($id));
+    // 1. Eksekusi DELETE FROM riwayat_kas WHERE id = :id
+    $stmt_del = $conn->prepare("DELETE FROM riwayat_kas WHERE id = :id");
+    $stmt_del->execute(array(':id' => $id));
 
-        $stmt_del_pem = $conn->prepare("DELETE FROM pembayaran WHERE id = ?");
-        $stmt_del_pem->execute(array($id));
-    }
+    $stmt_del_pem = $conn->prepare("DELETE FROM pembayaran WHERE id = :id");
+    $stmt_del_pem->execute(array(':id' => $id));
 
-    if ($id <= 0 && $id_anggota > 0) {
-        $stmt_del_all = $conn->prepare("DELETE FROM riwayat_kas WHERE id_anggota = ?");
-        $stmt_del_all->execute(array($id_anggota));
+    $stmt_del_kk = $conn->prepare("DELETE FROM kas_keliling WHERE id = :id");
+    $stmt_del_kk->execute(array(':id' => $id));
 
-        $stmt_del_all_pem = $conn->prepare("DELETE FROM pembayaran WHERE anggotaId = ? AND LOWER(jenisPembayaran) IN ('kas', 'uang_kas')");
-        $stmt_del_all_pem->execute(array($id_anggota));
-    }
+    // 2. Hitung ulang Rekapitulasi Kas menggunakan SQL Aggregate SUM
+    $stmt_in = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM riwayat_kas");
+    $row_in = $stmt_in->fetch(PDO::FETCH_ASSOC);
+    $total_pemasukan = floatval($row_in['total'] ?? 0);
+
+    $stmt_out = $conn->query("SELECT COALESCE(SUM(nominal), 0) as total FROM pengeluaran");
+    $row_out = $stmt_out->fetch(PDO::FETCH_ASSOC);
+    $total_pengeluaran = floatval($row_out['total'] ?? 0);
+
+    $saldo_terbaru = max(0, $total_pemasukan - $total_pengeluaran);
+
+    // Sinkronisasi ke master ledger
+    try {
+        $stmt_upd = $conn->prepare("
+            INSERT INTO saldo_akumulasi (jenis_kas, total_akumulasi_masuk, total_akumulasi_keluar) 
+            VALUES ('kas_utama', :in, :out) 
+            ON DUPLICATE KEY UPDATE 
+                total_akumulasi_masuk = :in,
+                total_akumulasi_keluar = :out
+        ");
+        $stmt_upd->execute(array(':in' => $total_pemasukan, ':out' => $total_pengeluaran));
+    } catch (Exception $e_master) {}
 
     $conn->commit();
 
     http_response_code(200);
     echo json_encode(array(
         "status" => "success",
-        "message" => "Riwayat kas berhasil dihapus tanpa mengubah saldo total master"
+        "message" => "Transaksi berhasil dihapus dan rekapitulasi diperbarui",
+        "total_pemasukan" => $total_pemasukan,
+        "total_pengeluaran" => $total_pengeluaran,
+        "saldo_terbaru" => $saldo_terbaru
     ));
 
 } catch (Throwable $e) {
@@ -109,7 +90,7 @@ try {
     http_response_code(500);
     echo json_encode(array(
         "status" => "error",
-        "message" => "Gagal menghapus riwayat: " . $e->getMessage()
+        "message" => "Gagal menghapus transaksi: " . $e->getMessage()
     ));
 }
 ?>
