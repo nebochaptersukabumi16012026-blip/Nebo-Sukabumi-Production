@@ -1,5 +1,5 @@
 <?php
-// kas_keliling.php
+// kas_keliling.php - Khusus Kas Keliling Bulanan
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
@@ -26,30 +26,24 @@ switch ($method) {
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             echo json_encode(array("status" => "success", "data" => $result));
         } else {
-            // Get all transactions
             $stmt = $conn->query("SELECT * FROM kas_keliling ORDER BY tahun DESC, bulan DESC");
             $transaksi = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // SQL Aggregate SUM calculation on kas_keliling table
+            // SQL Aggregate SUM calculation KHUSUS tabel kas_keliling
             $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
-            $row_in = $stmt_in->fetch(PDO::FETCH_ASSOC);
-            $total_pemasukan = floatval($row_in['total'] ?? 0);
+            $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
-            $row_out = $stmt_out->fetch(PDO::FETCH_ASSOC);
-            $total_pengeluaran = floatval($row_out['total'] ?? 0);
+            $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $saldo_terbaru = max(0, $total_pemasukan - $total_pengeluaran);
+            $saldo = max(0, $total_pemasukan - $total_pengeluaran);
             
             echo json_encode(array(
                 "status" => "success", 
-                "data" => [
-                    "transaksi" => $transaksi,
-                    "total_pemasukan" => $total_pemasukan,
-                    "total_pengeluaran" => $total_pengeluaran,
-                    "saldo_kas_keliling" => $saldo_terbaru,
-                    "saldo_terbaru" => $saldo_terbaru
-                ]
+                "total_pemasukan" => $total_pemasukan,
+                "total_pengeluaran" => $total_pengeluaran,
+                "saldo" => $saldo,
+                "data" => $transaksi
             ));
         }
         break;
@@ -69,14 +63,13 @@ switch ($method) {
                 ':catatan' => isset($data->catatan) ? $data->catatan : ''
             ));
 
-            // Calculate new summary using SQL aggregate SUM
             $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
             $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
             $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $saldo_terbaru = max(0, $total_pemasukan - $total_pengeluaran);
+            $saldo = max(0, $total_pemasukan - $total_pengeluaran);
 
             echo json_encode(array(
                 "status" => "success", 
@@ -84,7 +77,7 @@ switch ($method) {
                 "id" => $conn->lastInsertId(),
                 "total_pemasukan" => $total_pemasukan,
                 "total_pengeluaran" => $total_pengeluaran,
-                "saldo_terbaru" => $saldo_terbaru
+                "saldo" => $saldo
             ));
         } else {
             echo json_encode(array("status" => "error", "message" => "Data bulan, tahun, dan pemasukan wajib diisi"));
@@ -107,21 +100,20 @@ switch ($method) {
                 ':id' => $data->id
             ));
 
-            // Calculate new summary using SQL aggregate SUM
             $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
             $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
             $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $saldo_terbaru = max(0, $total_pemasukan - $total_pengeluaran);
+            $saldo = max(0, $total_pemasukan - $total_pengeluaran);
 
             echo json_encode(array(
                 "status" => "success", 
                 "message" => "Data kas keliling berhasil diupdate",
                 "total_pemasukan" => $total_pemasukan,
                 "total_pengeluaran" => $total_pengeluaran,
-                "saldo_terbaru" => $saldo_terbaru
+                "saldo" => $saldo
             ));
         } else {
             echo json_encode(array("status" => "error", "message" => "ID tidak ditemukan"));
@@ -139,23 +131,20 @@ switch ($method) {
             $stmt = $conn->prepare("DELETE FROM kas_keliling WHERE id = ?");
             $stmt->execute(array($deleteId));
 
-            // Calculate new summary using SQL aggregate SUM
             $stmt_in = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
-            $row_in = $stmt_in->fetch(PDO::FETCH_ASSOC);
-            $total_pemasukan = floatval($row_in['total'] ?? 0);
+            $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
             $stmt_out = $conn->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pengeluaran' THEN nominal ELSE total_pengeluaran END), 0) as total FROM kas_keliling");
-            $row_out = $stmt_out->fetch(PDO::FETCH_ASSOC);
-            $total_pengeluaran = floatval($row_out['total'] ?? 0);
+            $total_pengeluaran = floatval($stmt_out->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            $saldo_terbaru = max(0, $total_pemasukan - $total_pengeluaran);
+            $saldo = max(0, $total_pemasukan - $total_pengeluaran);
 
             echo json_encode(array(
                 "status" => "success", 
                 "message" => "Data kas keliling berhasil dihapus",
                 "total_pemasukan" => $total_pemasukan,
                 "total_pengeluaran" => $total_pengeluaran,
-                "saldo_terbaru" => $saldo_terbaru
+                "saldo" => $saldo
             ));
         } else {
             echo json_encode(array("status" => "error", "message" => "ID tidak ditemukan"));
