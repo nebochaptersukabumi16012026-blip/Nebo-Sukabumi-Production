@@ -102,12 +102,66 @@ try {
     }
     $saldo_kas_aniv = max(0.0, $raw_total_aniv - $aniv_out);
 
-    // 5. Total Pengeluaran All & Sisa Cicilan
+    // 5. Total Pengeluaran All & Rekapitulasi Cicilan Aktif
     $total_pengeluaran_all = $kas_utama_out + $kas_keliling_out + $aniv_out;
+    $total_harga_barang = 0.0;
+    $total_sudah_dibayar = 0.0;
     $total_sisa_cicilan = 0.0;
-    $stmt_cicilan = $conn->query("SELECT COALESCE(SUM(sisa_cicilan), 0) as total FROM anggota");
-    if ($stmt_cicilan && $row_c = $stmt_cicilan->fetch(PDO::FETCH_ASSOC)) {
-        $total_sisa_cicilan = floatval($row_c['total'] ?? 0.0);
+    $anggota_mencicil = 0;
+
+    $queryFromCicilanTable = false;
+    try {
+        $checkCol = $conn->query("SHOW COLUMNS FROM cicilan LIKE 'harga_barang'");
+        if ($checkCol && $checkCol->rowCount() > 0) {
+            $queryFromCicilanTable = true;
+        }
+    } catch (Exception $ignored) {
+        $queryFromCicilanTable = false;
+    }
+
+    if ($queryFromCicilanTable) {
+        $stmt_cicilan = $conn->query("SELECT 
+            COALESCE(SUM(harga_barang), 0) AS total_harga_barang,
+            COALESCE(SUM(sudah_dibayar), 0) AS total_sudah_dibayar,
+            COALESCE(SUM(harga_barang - sudah_dibayar), 0) AS total_sisa_cicilan,
+            COUNT(DISTINCT nra) AS anggota_mencicil
+        FROM cicilan 
+        WHERE (harga_barang - sudah_dibayar) > 0");
+
+        if ($stmt_cicilan && $row_c = $stmt_cicilan->fetch(PDO::FETCH_ASSOC)) {
+            $anggota_mencicil = intval($row_c['anggota_mencicil'] ?? 0);
+            if ($anggota_mencicil > 0) {
+                $total_harga_barang = floatval($row_c['total_harga_barang'] ?? 0);
+                $total_sudah_dibayar = floatval($row_c['total_sudah_dibayar'] ?? 0);
+                $total_sisa_cicilan = floatval($row_c['total_sisa_cicilan'] ?? 0);
+            }
+        }
+    } else {
+        // Query dari tabel anggota HANYA untuk anggota yang MASIH MEMILIKI SISA CICILAN (sisa > 0)
+        $stmt_cicilan = $conn->query("SELECT 
+            COALESCE(SUM(harga_barang), 0) AS total_harga_barang,
+            COALESCE(SUM(total_cicilan), 0) AS total_sudah_dibayar,
+            COALESCE(SUM(CASE WHEN sisa_cicilan > 0 THEN sisa_cicilan ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) END), 0) AS total_sisa_cicilan,
+            COUNT(DISTINCT nra) AS anggota_mencicil
+        FROM anggota 
+        WHERE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0) > 0 OR COALESCE(sisa_cicilan, 0) > 0)");
+
+        if ($stmt_cicilan && $row_c = $stmt_cicilan->fetch(PDO::FETCH_ASSOC)) {
+            $anggota_mencicil = intval($row_c['anggota_mencicil'] ?? 0);
+            if ($anggota_mencicil > 0) {
+                $total_harga_barang = floatval($row_c['total_harga_barang'] ?? 0);
+                $total_sudah_dibayar = floatval($row_c['total_sudah_dibayar'] ?? 0);
+                $total_sisa_cicilan = floatval($row_c['total_sisa_cicilan'] ?? 0);
+            }
+        }
+    }
+
+    // Jika hasil anggota_mencicil = 0, pastikan total_harga_barang otomatis mengembalikan 0
+    if ($anggota_mencicil <= 0) {
+        $total_harga_barang = 0.0;
+        $total_sudah_dibayar = 0.0;
+        $total_sisa_cicilan = 0.0;
+        $anggota_mencicil = 0;
     }
 
     // Belum bayar kas / aniv
@@ -159,12 +213,27 @@ try {
             "saldo_aniv" => $saldo_kas_aniv,
             "saldo" => $saldo_kas_aniv
         ),
+        "cicilan" => array(
+            "total_harga_barang" => $total_harga_barang,
+            "total_sudah_dibayar" => $total_sudah_dibayar,
+            "total_sisa_cicilan" => $total_sisa_cicilan,
+            "anggota_mencicil" => $anggota_mencicil
+        ),
         "data" => array(
             "total_anggota" => $total_anggota,
             "total_kas" => $total_pemasukan_kas,
             "total_aniv" => $raw_total_aniv,
             "total_pengeluaran" => $total_pengeluaran_all,
             "total_sisa_cicilan" => $total_sisa_cicilan,
+            "total_harga_barang" => $total_harga_barang,
+            "total_sudah_dibayar" => $total_sudah_dibayar,
+            "anggota_mencicil" => $anggota_mencicil,
+            "cicilan" => array(
+                "total_harga_barang" => $total_harga_barang,
+                "total_sudah_dibayar" => $total_sudah_dibayar,
+                "total_sisa_cicilan" => $total_sisa_cicilan,
+                "anggota_mencicil" => $anggota_mencicil
+            ),
             "total_saldo" => $saldo_kas_keliling,
             "saldo_kas" => $saldo_kas_utama,
             "belum_bayar_kas" => $belum_bayar_kas,

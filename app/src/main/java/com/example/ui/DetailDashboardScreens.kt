@@ -329,10 +329,9 @@ fun DetailUangKasScreen(navController: NavController, viewModel: CommunityViewMo
     val userRole by viewModel.loggedInUserRole.collectAsState()
     
     // ATURAN HAK AKSES:
-    // 1. Tombol Hapus (Delete / Reset Kas per item) HANYA TAMPIL & BISA DIGUNAKAN oleh 'developer'
-    val isDeveloper = userRole?.equals("DEVELOPER", ignoreCase = true) == true
-    // 2. Fitur Tutup Periode Audit & Export PDF bisa diakses oleh DEVELOPER, ADMIN, BENDAHARA
-    val canManageAudit = userRole?.uppercase() in listOf("DEVELOPER", "ADMIN", "BENDAHARA")
+    // 1. Tombol Hapus (Delete / Reset Kas per item) dan Fitur Manajemen bisa diakses oleh DEVELOPER, ADMIN, BENDAHARA
+    val canManageFinance = userRole?.uppercase() in listOf("DEVELOPER", "ADMIN", "BENDAHARA")
+    val canManageAudit = userRole?.uppercase() in listOf("DEVELOPER", "ADMIN")
     
     var showExportPdfDialog by remember { mutableStateOf(false) }
     
@@ -418,12 +417,13 @@ fun DetailUangKasScreen(navController: NavController, viewModel: CommunityViewMo
             confirmButton = {
                 Button(
                     onClick = {
-                        locallyDeletedIds = locallyDeletedIds + target.id
-                        // Sesuai Instruksi: Reset kas anggota menjadi 0 di tabel anggota & kurangi saldo
                         viewModel.resetMemberKas(target.id) { success, msg ->
+                             if (success) {
+                                 locallyDeletedIds = locallyDeletedIds + target.id
+                                 viewModel.getDetailKas()
+                                 viewModel.syncFromApi()
+                             }
                              Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                             viewModel.getDetailKas()
-                             viewModel.syncFromApi()
                         }
                         itemToDelete = null
                     },
@@ -574,11 +574,12 @@ fun DetailUangKasScreen(navController: NavController, viewModel: CommunityViewMo
                     }
                 },
                 onShare = {
-                    val daftarTeks = filteredTransactions.mapIndexed { index, item ->
-                        "${index + 1}. ${item.nama}: ${formatRupiah(item.nominal)} (${item.tanggal})"
-                    }.joinToString("\n")
+                    var teksDaftar = ""
+                    filteredTransactions.forEachIndexed { index, item ->
+                        teksDaftar += "${index + 1}. ${item.nama}: ${formatRupiah(item.nominal)} (${item.tanggal})\n"
+                    }
 
-                    val teksLaporan = "Ijin lapor pak uang yang terkumpul dan data yang masuk\n\nLAPORAN KEUANGAN UANG KAS\n\nRingkasan Kas:\n- Total Pemasukan: ${formatRupiah(totalPemasukan)}\n- Total Pengeluaran: ${formatRupiah(totalPengeluaran)}\n- Saldo Kas Saat Ini: ${formatRupiah(saldoSaatIni)}\n\nDaftar Pembayaran Kas Terakhir:\n$daftarTeks"
+                    val teksLaporan = "Ijin lapor pak uang yang terkumpul dan data yang masuk\n\nLAPORAN KEUANGAN UANG KAS\n\nRingkasan Kas:\n- Total Pemasukan: ${formatRupiah(totalPemasukan)}\n- Total Pengeluaran: ${formatRupiah(totalPengeluaran)}\n- Saldo Kas Saat Ini: ${formatRupiah(saldoSaatIni)}\n\nDaftar Pembayaran Kas Terakhir:\n$teksDaftar".trimEnd()
 
                     shareReport(context, "", teksLaporan)
                 }
@@ -780,7 +781,7 @@ fun DetailUangKasScreen(navController: NavController, viewModel: CommunityViewMo
                                             )
                                             
                                             // HANYA ROLE DEVELOPER YANG DAPAT MELIHAT DAN MENEKAN TOMBOL HAPUS
-                                            if (isDeveloper) {
+                                            if (canManageFinance) {
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 
                                                 IconButton(
@@ -997,9 +998,14 @@ fun DetailIuranAnivScreen(navController: NavController, viewModel: CommunityView
 
 
 
-// 🧾 Screen 4: Detail Sisa Cicilan Screen
+// 🧾 Screen 4: Detail Sisa Cicilan Screen / Daftar Cicilan Anggota
 @Composable
 fun DetailSisaCicilanScreen(navController: NavController, viewModel: CommunityViewModel) {
+    DaftarCicilanAnggotaScreen(navController = navController, viewModel = viewModel)
+}
+
+@Composable
+fun DaftarCicilanAnggotaScreen(navController: NavController, viewModel: CommunityViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
@@ -1009,49 +1015,90 @@ fun DetailSisaCicilanScreen(navController: NavController, viewModel: CommunityVi
     val loggedInUserId by viewModel.loggedInUserId.collectAsState()
     val anggotaList by viewModel.allAnggota.collectAsState()
     val dashboardData by viewModel.dashboardData.collectAsState()
+    val apiCicilanList by viewModel.cicilanAktifList.collectAsState()
 
-    val totalSisaCicilan = dashboardData?.total_sisa_cicilan ?: anggotaList.sumOf { it.sisaCicilan }
-    
-    val membersWithCicilan = anggotaList.filter { 
-        it.sisaCicilan > 0.0 && (userRole != "ANGGOTA" || it.id == loggedInUserId) 
+    LaunchedEffect(Unit) {
+        viewModel.fetchCicilanAktif()
     }
-    val filteredList = membersWithCicilan.filter {
-        it.nama.contains(searchQuery, ignoreCase = true)
-    }.sortedByDescending { it.sisaCicilan }
+
+    // Unified list of active installments (Full Read Access for all roles including ANGGOTA and GUEST)
+    val cicilanDisplayList = remember(apiCicilanList, anggotaList) {
+        if (apiCicilanList.isNotEmpty()) {
+            apiCicilanList.filter {
+                it.sisa_cicilan > 0.0
+            }
+        } else {
+            anggotaList.filter {
+                val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - it.totalCicilan)
+                sisa > 0.0
+            }.map {
+                val sudahBayar = it.totalCicilan
+                val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - sudahBayar)
+                com.example.network.CicilanAktifItem(
+                    id = it.id,
+                    nama = it.nama,
+                    nra = it.nra.ifBlank { "-" },
+                    harga_barang = it.hargaBarang,
+                    sudah_dibayar = sudahBayar,
+                    sisa_cicilan = sisa,
+                    cicilan_per_bulan = it.cicilanPerBulan
+                )
+            }
+        }
+    }
+
+    val totalSisaCicilan = cicilanDisplayList.sumOf { it.sisa_cicilan }
+    val totalHargaBarangAll = cicilanDisplayList.sumOf { it.harga_barang }
+    val totalSudahDibayarAll = cicilanDisplayList.sumOf { it.sudah_dibayar }
+
+    val filteredList = cicilanDisplayList.filter {
+        it.nama.contains(searchQuery, ignoreCase = true) || (it.nra ?: "").contains(searchQuery, ignoreCase = true)
+    }.sortedByDescending { it.sisa_cicilan }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(colors = listOf(Color(0xFF0F172A), Color.Black)))
+            .imePadding()
             .padding(horizontal = 16.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             DetailHeader(
-                title = "Detail Sisa Cicilan",
+                title = "Daftar Cicilan Anggota",
                 onBack = { navController.popBackStack() },
                 onRefresh = {
                     scope.launch {
                         isRefreshing = true
                         viewModel.syncFromApiSuspend()
+                        viewModel.fetchCicilanAktif()
                         isRefreshing = false
                         Toast.makeText(context, "Data cicilan diperbarui", Toast.LENGTH_SHORT).show()
                     }
                 },
                 onShare = {
                     val contentStr = """
-                        Total Sisa Cicilan Keseluruhan: ${formatRupiah(totalSisaCicilan)}
+                        LAPORAN DAFTAR CICILAN AKTIF
+                        Total Harga Barang: ${formatRupiah(totalHargaBarangAll)}
+                        Total Sudah Dibayar: ${formatRupiah(totalSudahDibayarAll)}
+                        Total Sisa Cicilan: ${formatRupiah(totalSisaCicilan)}
+                        Jumlah Anggota Mencicil: ${filteredList.size} Orang
 
-                        Daftar Anggota:
-                        ${filteredList.mapIndexed { idx, it -> "${idx+1}. ${it.nama}: ${formatRupiah(it.sisaCicilan)}" }.joinToString("\n")}
+                        Rincian Per Anggota:
+                        ${filteredList.mapIndexed { idx, it -> 
+                            "${idx+1}. ${it.nama} (NRA: ${it.nra ?: "-"}):\n" +
+                            "   - Total Barang : ${formatRupiah(it.harga_barang)}\n" +
+                            "   - Sudah Dibayar: ${formatRupiah(it.sudah_dibayar)}\n" +
+                            "   - Sisa Cicilan : ${formatRupiah(it.sisa_cicilan)}"
+                        }.joinToString("\n")}
                     """.trimIndent()
-                    shareReport(context, "LAPORAN SISA CICILAN", contentStr)
+                    shareReport(context, "LAPORAN SISA CICILAN ANGGOTA", contentStr)
                 }
             )
 
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("Cari Anggota", color = Color.White.copy(alpha = 0.6f)) },
+                label = { Text("Cari Anggota / NRA", color = Color.White.copy(alpha = 0.6f)) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color.White) },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1060,7 +1107,7 @@ fun DetailSisaCicilanScreen(navController: NavController, viewModel: CommunityVi
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color(0xFFFF9800),
+                    focusedBorderColor = Color(0xFFF97316),
                     unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
                     focusedContainerColor = Color(0xFF1F2937).copy(alpha = 0.6f),
                     unfocusedContainerColor = Color(0xFF1F2937).copy(alpha = 0.3f)
@@ -1069,7 +1116,7 @@ fun DetailSisaCicilanScreen(navController: NavController, viewModel: CommunityVi
             
             if (isRefreshing) {
                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFFFF9800))
+                    CircularProgressIndicator(color = Color(0xFFF97316))
                 }
             }
 
@@ -1080,27 +1127,165 @@ fun DetailSisaCicilanScreen(navController: NavController, viewModel: CommunityVi
             ) {
                 item {
                     DarkGradientCard(modifier = Modifier.fillMaxWidth()) {
-                        Text("Total Keseluruhan", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                        Text(formatRupiah(totalSisaCicilan), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFFFF9800))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Total Sisa Cicilan Anggota", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                Text(formatRupiah(totalSisaCicilan), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("Barang: ${formatRupiah(totalHargaBarangAll)}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF38BDF8))
+                                    Text("Dibayar: ${formatRupiah(totalSudahDibayarAll)}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF22C55E))
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .background(Color(0xFFEF4444).copy(alpha = 0.15f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ReceiptLong,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF87171),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
                     }
                 }
                 
+                item {
+                    Text(
+                        "Anggota Memiliki Cicilan (${filteredList.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.LightGray,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+
                 if (filteredList.isEmpty()) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            Text("Tidak ada sisa cicilan", color = Color.Gray)
+                            Text("Tidak ada anggota yang memiliki sisa cicilan", color = Color.Gray)
                         }
                     }
                 } else {
-                    items(filteredList) { member ->
-                        DarkGradientCard(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(member.nama, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text(formatRupiah(member.sisaCicilan), color = Color(0xFFFF9800), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    items(filteredList, key = { it.id }) { item ->
+                        DarkGradientCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    navController.navigate("anggota_detail?id=${item.id}")
+                                }
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.nama,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "NRA: ${if (!item.nra.isNullOrBlank()) item.nra else "-"}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = "Detail Anggota",
+                                        tint = Color.LightGray
+                                    )
+                                }
+
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    color = Color.White.copy(alpha = 0.08f)
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Total Barang",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.Gray
+                                        )
+                                        Text(
+                                            text = formatRupiah(item.harga_barang),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFFE2E8F0)
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Sudah Dibayar",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.Gray
+                                        )
+                                        Text(
+                                            text = formatRupiah(item.sudah_dibayar),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF22C55E)
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "Sisa Cicilan",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.Gray
+                                        )
+                                        Text(
+                                            text = formatRupiah(item.sisa_cicilan),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFEF4444)
+                                        )
+                                    }
+                                }
+
+                                if (item.cicilan_per_bulan > 0.0) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF334155).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Estimasi Cicilan / Bulan",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.LightGray
+                                        )
+                                        Text(
+                                            text = formatRupiah(item.cicilan_per_bulan),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFFBBF24)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

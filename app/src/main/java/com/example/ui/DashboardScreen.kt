@@ -46,6 +46,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +76,30 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     
     val currentMonthYear = remember {
         java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("id", "ID")).format(java.util.Date())
+    }
+
+    var showGuestAlert by remember { mutableStateOf(false) }
+
+    if (showGuestAlert) {
+        AlertDialog(
+            onDismissRequest = { showGuestAlert = false },
+            title = { Text("Akses Terbatas", fontWeight = FontWeight.Bold, color = Color.White) },
+            text = { Text("Akun Anda belum diverifikasi oleh pengurus", color = Color.LightGray) },
+            confirmButton = {
+                Button(onClick = { showGuestAlert = false }) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF1E293B)
+        )
+    }
+
+    val onNavigateFinance: (String) -> Unit = { route ->
+        if (userRole?.equals("GUEST", ignoreCase = true) == true) {
+            showGuestAlert = true
+        } else {
+            navController.navigate(route)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -112,8 +137,25 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     val belumBayarKas = dashboardData?.belum_kas ?: dashboardData?.belum_bayar_kas ?: 0
     val belumBayarAniv = dashboardData?.belum_anniversary ?: dashboardData?.belum_bayar_aniv ?: 0
     val totalAnggota = dashboardData?.total_anggota ?: 0
-    val totalSisaCicilan = anggotaList.sumOf { it.sisaCicilan }
-    val totalHargaBarang = anggotaList.sumOf { it.hargaBarang }
+    
+    // Sinkronisasi Rekapitulasi Cicilan: HANYA menghitung anggota yang MASIH MEMILIKI SISA CICILAN (sisa > 0)
+    val cicilanAktifList by viewModel.cicilanAktifList.collectAsState()
+    val anggotaAktifCicilan = anggotaList.filter { (it.sisaCicilan > 0.0) || (it.hargaBarang > 0.0 && (it.hargaBarang - it.totalCicilan) > 0.0) }
+    
+    val anggotaPunyaCicilanCount = dashboardData?.anggota_mencicil 
+        ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.size else anggotaAktifCicilan.size)
+
+    val actualSisaCicilan = if (anggotaPunyaCicilanCount == 0) 0.0 else (
+        dashboardData?.total_sisa_cicilan 
+            ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.sumOf { it.sisa_cicilan } else anggotaAktifCicilan.sumOf { if (it.sisaCicilan > 0) it.sisaCicilan else maxOf(0.0, it.hargaBarang - it.totalCicilan) })
+    )
+    val totalSisaCicilanStr = if (dashboardData != null || anggotaList.isNotEmpty() || cicilanAktifList.isNotEmpty()) formatRupiah(actualSisaCicilan) else "Memuat..."
+
+    val totalHargaBarang = if (anggotaPunyaCicilanCount == 0) 0.0 else (
+        dashboardData?.total_harga_barang 
+            ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.sumOf { it.harga_barang } else anggotaAktifCicilan.sumOf { it.hargaBarang })
+    )
+    val totalSisaCicilan = actualSisaCicilan
     
     val totalPengeluaranAllStr = formatRupiah(totalPengeluaranKas)
     val saldoKasUnifiedStr = formatRupiah(saldoKasAkhirUtama)
@@ -123,9 +165,6 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     val totalAnivStr = if (dashboardData != null) formatRupiah(actualAniv) else "Memuat..."
     
     val totalKasKelilingSaldoStr = formatRupiah(saldoKasKelilingFinal)
-    
-    val actualSisaCicilan = dashboardData?.total_sisa_cicilan ?: 0.0
-    val totalSisaCicilanStr = if (dashboardData != null) formatRupiah(actualSisaCicilan) else "Memuat..."
 
 
     val bgConfigs by viewModel.bgConfigs.collectAsState()
@@ -470,7 +509,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
-                        .clickable { navController.navigate("kas_keliling") },
+                        .clickable { onNavigateFinance("kas_keliling") },
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
@@ -604,7 +643,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
-                        .clickable { navController.navigate("detail_iuran_aniv") },
+                        .clickable { onNavigateFinance("detail_iuran_aniv") },
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
@@ -732,6 +771,141 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                 }
             }
 
+            // Card 3: REKAPITULASI CICILAN BARANG (cardCicilan / get_daftar_cicilan_aktif.php)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .testTag("card_cicilan")
+                        .clickable { onNavigateFinance("daftar_cicilan_anggota") },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(Color(0xFFEA580C).copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ReceiptLong,
+                                        contentDescription = "Cicilan",
+                                        tint = Color(0xFFFB923C),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "REKAPITULASI CICILAN BARANG",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        ),
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "Sumber: get_daftar_cicilan_aktif.php",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color.LightGray.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = Color.LightGray
+                            )
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = Color.White.copy(alpha = 0.1f)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Total Harga Barang",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.LightGray
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = formatRupiah(totalHargaBarang),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF38BDF8)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Anggota Mencicil",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.LightGray
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$anggotaPunyaCicilanCount Anggota",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFFFBBF24)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Highlight Sisa Cicilan Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0xFF9A3412), Color(0xFFC2410C))
+                                    ),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Total Sisa Cicilan",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = totalSisaCicilanStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 18.sp
+                                    ),
+                                    color = Color(0xFFFFEDD5)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // ========================================================
             // 3. KARTU GRID INDIKATOR UTAMA (2-Column Grid)
             // ========================================================
@@ -755,7 +929,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         value = "$belumBayarKas Orang",
                         icon = Icons.Default.Warning,
                         iconTint = Color(0xFFEF4444),
-                        modifier = Modifier.fillMaxWidth().clickable { navController.navigate("detail_belum_kas") },
+                        modifier = Modifier.fillMaxWidth().clickable { onNavigateFinance("detail_belum_kas") },
                         valueColor = Color(0xFFEF4444),
                         subtitle = "Tunggakan Kas"
                     )
@@ -767,7 +941,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         value = "$belumBayarAniv Orang",
                         icon = Icons.Default.PendingActions,
                         iconTint = Color(0xFFF59E0B),
-                        modifier = Modifier.fillMaxWidth().clickable { navController.navigate("detail_belum_aniv") },
+                        modifier = Modifier.fillMaxWidth().clickable { onNavigateFinance("detail_belum_aniv") },
                         valueColor = Color(0xFFF59E0B),
                         subtitle = "Tunggakan Aniv"
                     )
@@ -779,7 +953,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         value = totalPengeluaranAllStr,
                         icon = Icons.Default.ShoppingCart,
                         iconTint = Color(0xFFF43F5E),
-                        modifier = Modifier.fillMaxWidth().clickable { navController.navigate("detail_total_pengeluaran") },
+                        modifier = Modifier.fillMaxWidth().clickable { onNavigateFinance("detail_total_pengeluaran") },
                         valueColor = Color(0xFFF43F5E),
                         subtitle = "Pengeluaran Murni"
                     )
@@ -791,7 +965,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         value = saldoKasUnifiedStr,
                         icon = Icons.Default.AccountBalanceWallet,
                         iconTint = saldoKasColor,
-                        modifier = Modifier.fillMaxWidth().clickable { navController.navigate("detail_uang_kas") },
+                        modifier = Modifier.fillMaxWidth().clickable { onNavigateFinance("detail_uang_kas") },
                         valueColor = saldoKasColor,
                         subtitle = "Sisa Saldo Kas"
                     )

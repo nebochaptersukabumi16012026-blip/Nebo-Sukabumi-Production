@@ -25,91 +25,68 @@ switch ($method) {
 
     case 'POST':
         if (!empty($data->anggotaId) && isset($data->nominal) && !empty($data->jenisPembayaran)) {
-            $tanggalTs = isset($data->tanggal) ? $data->tanggal : (time() * 1000);
-            $formattedDate = date('Y-m-d H:i:s', intval($tanggalTs / 1000));
-            $keteranganStr = isset($data->keterangan) ? $data->keterangan : '';
+            $user_role = '';
+            if (isset($data->role)) $user_role = strtoupper(trim($data->role));
+            elseif (isset($data->user_role)) $user_role = strtoupper(trim($data->user_role));
 
-            $query = "INSERT INTO pembayaran (anggotaId, anggotaNama, jenisPembayaran, nominal, tanggal, keterangan, buktiPembayaran) VALUES (?, ?, ?, ?, ?, ?, ?)";
-            $stmt = $conn->prepare($query);
-            $stmt->execute(array(
-                $data->anggotaId,
-                isset($data->anggotaNama) ? $data->anggotaNama : '',
-                $data->jenisPembayaran,
-                $data->nominal,
-                $tanggalTs,
-                $keteranganStr,
-                isset($data->buktiPembayaran) ? $data->buktiPembayaran : null
-            ));
-            $insertedId = $conn->lastInsertId();
-            
-            if (strtoupper($data->jenisPembayaran) == 'KAS') {
-                try {
-                    $conn->prepare("UPDATE saldo_akumulasi SET total_akumulasi_masuk = total_akumulasi_masuk + ? WHERE jenis_kas = 'kas_utama'")->execute(array($data->nominal));
-                } catch (Exception $e) {}
+            if (strtoupper($data->jenisPembayaran) === 'CICILAN' && ($user_role === 'ANGGOTA' || $user_role === 'GUEST')) {
+                http_response_code(403);
+                echo json_encode(array('status' => 'error', 'message' => 'Akses ditolak: Anggota/Guest tidak diizinkan membayar cicilan'));
+                exit();
+            }
 
-                try {
+            try {
+                $conn->beginTransaction();
+                $tanggalTs = isset($data->tanggal) ? $data->tanggal : (time() * 1000);
+                $formattedDate = date('Y-m-d H:i:s', intval($tanggalTs / 1000));
+                $keteranganStr = isset($data->keterangan) ? $data->keterangan : '';
+
+                $query = "INSERT INTO pembayaran (anggotaId, anggotaNama, jenisPembayaran, nominal, tanggal, keterangan, buktiPembayaran) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $stmt = $conn->prepare($query);
+                $stmt->execute(array(
+                    $data->anggotaId,
+                    isset($data->anggotaNama) ? $data->anggotaNama : '',
+                    $data->jenisPembayaran,
+                    $data->nominal,
+                    $tanggalTs,
+                    $keteranganStr,
+                    isset($data->buktiPembayaran) ? $data->buktiPembayaran : null
+                ));
+                $insertedId = $conn->lastInsertId();
+                
+                if (strtoupper($data->jenisPembayaran) == 'KAS') {
+                    $conn->prepare("
+                        INSERT INTO saldo_akumulasi (jenis_kas, total_akumulasi_masuk) 
+                        VALUES ('kas_utama', ?) 
+                        ON DUPLICATE KEY UPDATE total_akumulasi_masuk = total_akumulasi_masuk + ?
+                    ")->execute(array($data->nominal, $data->nominal));
+
                     $conn->prepare("UPDATE anggota SET uang_kas = uang_kas + ? WHERE id = ?")->execute(array($data->nominal, $data->anggotaId));
-                } catch (Exception $e) {}
 
-                try {
-                    $stmt_rk = $conn->prepare("INSERT INTO riwayat_kas (id_anggota, nominal, tanggal, keterangan, created_at) VALUES (?, ?, ?, ?, ?)");
+                    $stmt_rk = $conn->prepare("INSERT INTO riwayat_kas (id_anggota, nominal, tanggal, keterangan) VALUES (?, ?, ?, ?)");
                     $stmt_rk->execute(array(
                         $data->anggotaId,
                         $data->nominal,
                         $formattedDate,
-                        $keteranganStr ?: 'Iuran Kas',
-                        $tanggalTs
+                        $keteranganStr ?: 'Iuran Kas'
                     ));
-                } catch (Exception $e) {}
+                } elseif (strtoupper($data->jenisPembayaran) == 'ANIV') {
+                    $conn->prepare("
+                        INSERT INTO saldo_akumulasi (jenis_kas, total_akumulasi_masuk) 
+                        VALUES ('kas_aniv', ?) 
+                        ON DUPLICATE KEY UPDATE total_akumulasi_masuk = total_akumulasi_masuk + ?
+                    ")->execute(array($data->nominal, $data->nominal));
 
-                // recalculateAnggotaKas removed to adhere to non-decreasing rule
-                
-                // Also insert into kas_keliling for transaction history as requested
-                try {
-                    $stmt_nra = $conn->prepare("SELECT nra FROM anggota WHERE id = ?");
-                    $stmt_nra->execute(array($data->anggotaId));
-                    $row_nra = $stmt_nra->fetch(PDO::FETCH_ASSOC);
-                    $nra = isset($row_nra['nra']) ? $row_nra['nra'] : '';
-                    
-                    $bulan = getIndonesianMonth(date("n", $tanggalTs / 1000));
-                    $tahun = date("Y", $tanggalTs / 1000);
-                    
-                    $stmt_kk = $conn->prepare("INSERT INTO kas_keliling (nra, nominal, tanggal, keterangan, jenis_transaksi, bulan, tahun, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                    $stmt_kk->execute(array(
-                        $nra,
-                        $data->nominal,
-                        $tanggalTs,
-                        $keteranganStr ?: 'Iuran Kas',
-                        'Pemasukan',
-                        $bulan,
-                        $tahun,
-                        isset($data->anggotaNama) ? $data->anggotaNama : 'System',
-                        time() * 1000
-                    ));
-                } catch (Exception $e) {
-                    error_log("Error mirroring to kas_keliling: " . $e->getMessage());
-                }
-            } elseif (strtoupper($data->jenisPembayaran) == 'ANIV') {
-                try {
-                    $conn->prepare("UPDATE saldo_akumulasi SET total_akumulasi_masuk = total_akumulasi_masuk + ? WHERE jenis_kas = 'kas_aniv'")->execute(array($data->nominal));
-                } catch (Exception $e) {}
-
-                try {
                     $conn->prepare("UPDATE anggota SET iuran_aniv = iuran_aniv + ? WHERE id = ?")->execute(array($data->nominal, $data->anggotaId));
-                } catch (Exception $e) {}
 
-                try {
-                    $stmt_ra = $conn->prepare("INSERT INTO riwayat_aniv (id_anggota, nominal, tanggal, keterangan, created_at) VALUES (?, ?, ?, ?, ?)");
+                    $stmt_ra = $conn->prepare("INSERT INTO riwayat_aniv (id_anggota, nominal, tanggal, keterangan) VALUES (?, ?, ?, ?)");
                     $stmt_ra->execute(array(
                         $data->anggotaId,
                         $data->nominal,
                         $formattedDate,
-                        $keteranganStr ?: 'Iuran Anniversary',
-                        $tanggalTs
+                        $keteranganStr ?: 'Iuran Anniversary'
                     ));
-                } catch (Exception $e) {}
 
-                try {
                     $stmt_ia = $conn->prepare("INSERT INTO iuran_anniversary (anggota_id, nominal, tanggal, keterangan) VALUES (?, ?, ?, ?)");
                     $stmt_ia->execute(array(
                         $data->anggotaId,
@@ -117,11 +94,7 @@ switch ($method) {
                         $formattedDate,
                         $keteranganStr ?: 'Iuran Anniversary'
                     ));
-                } catch (Exception $e) {}
-
-                // recalculateAnggotaAniv removed to adhere to non-decreasing rule
-            } elseif (strtoupper($data->jenisPembayaran) == 'CICILAN') {
-                try {
+                } elseif (strtoupper($data->jenisPembayaran) == 'CICILAN') {
                     $stmt_cic = $conn->prepare("INSERT INTO cicilan (anggota_id, nominal, tanggal, keterangan) VALUES (?, ?, ?, ?)");
                     $stmt_cic->execute(array(
                         $data->anggotaId,
@@ -129,30 +102,37 @@ switch ($method) {
                         $formattedDate,
                         $keteranganStr ?: 'Cicilan'
                     ));
-                } catch (Exception $e) {}
 
-                recalculateAnggotaCicilan($conn, $data->anggotaId);
+                    recalculateAnggotaCicilan($conn, $data->anggotaId);
+                }
+                
+                $conn->commit();
+                echo json_encode(array("status" => "success", "message" => "Pembayaran berhasil ditambahkan", "id" => $insertedId));
+            } catch (Throwable $e) {
+                if ($conn->inTransaction()) {
+                    $conn->rollBack();
+                }
+                http_response_code(500);
+                echo json_encode(array("status" => "error", "message" => "Gagal tambah pembayaran: " . $e->getMessage()));
             }
-            
-            echo json_encode(array("status" => "success", "message" => "Pembayaran berhasil ditambahkan", "id" => $insertedId));
         }
         break;
 
     case 'DELETE':
         if (!empty($data->id)) {
-            $stmt_get = $conn->prepare("SELECT anggotaId, jenisPembayaran FROM pembayaran WHERE id = ?");
-            $stmt_get->execute(array($data->id));
-            $row = $stmt_get->fetch(PDO::FETCH_ASSOC);
-            
-            if ($row) {
-                $anggota_id = $row['anggotaId'];
-                $jenis = $row['jenisPembayaran'];
+            try {
+                $conn->beginTransaction();
                 $stmt = $conn->prepare("DELETE FROM pembayaran WHERE id = ?");
                 $stmt->execute(array($data->id));
-                
-                // Recalculation removed to adhere to non-decreasing rule
-                
+                // KUNCI LOGIKA UTAMA: DILARANG KERAS mengurangi atau mengubah angka di tabel saldo_akumulasi
+                $conn->commit();
                 echo json_encode(array("status" => "success", "message" => "Pembayaran berhasil dihapus"));
+            } catch (Throwable $e) {
+                if ($conn->inTransaction()) {
+                    $conn->rollBack();
+                }
+                http_response_code(500);
+                echo json_encode(array("status" => "error", "message" => "Gagal hapus pembayaran: " . $e->getMessage()));
             }
         }
         break;

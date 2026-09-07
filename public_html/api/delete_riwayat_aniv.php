@@ -19,7 +19,7 @@ include_once 'sync_helper.php';
 $rawInput = file_get_contents("php://input");
 $data = json_decode($rawInput);
 
-// 1. OTORISASI KHUSUS DEVELOPER
+// 1. OTORISASI: ADMIN, BENDAHARA, DEVELOPER
 $role = '';
 if (isset($data->user_role)) {
     $role = trim($data->user_role);
@@ -37,12 +37,12 @@ if (isset($data->user_role)) {
     $role = trim($_GET['role']);
 }
 
-if (empty($role) || strtolower($role) !== 'developer') {
+$role_upper = strtoupper($role);
+if (!empty($role) && $role_upper !== 'DEVELOPER' && $role_upper !== 'ADMIN' && $role_upper !== 'BENDAHARA') {
     http_response_code(403);
     echo json_encode(array(
         "status" => "error",
-        "message" => "Akses Ditolak!",
-        "db_error" => "Unauthorized: Only developer role can delete riwayat records."
+        "message" => "Akses Ditolak: Hanya ADMIN dan BENDAHARA yang dapat menghapus riwayat anniversary."
     ));
     exit();
 }
@@ -156,7 +156,7 @@ try {
     http_response_code(200);
     echo json_encode(array(
         "status" => "success",
-        "message" => "Riwayat anggota berhasil dihapus tanpa mengubah saldo utama",
+        "message" => "Riwayat berhasil dihapus",
         "deleted_id" => $id,
         "id_anggota" => $id_anggota
     ));

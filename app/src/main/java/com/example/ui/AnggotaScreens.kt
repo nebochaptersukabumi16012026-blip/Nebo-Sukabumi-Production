@@ -245,14 +245,19 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
         return
     }
 
-    // Role-based permission check:
+    // Role-based permission check (RBAC):
+    // ANGGOTA dan GUEST memiliki Full Read Access (lihat detail cicilan & profil),
+    // namun SEMUA tombol tindakan sensitif (Hapus, Edit, Bayar Cicilan) disembunyikan total (View.GONE).
+    val isRestrictedRole = userRole?.uppercase() in listOf("ANGGOTA", "GUEST")
+    val canManageUsers = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "DEVELOPER"))
     val isDeveloper = userRole?.equals("DEVELOPER", ignoreCase = true) == true
-    val isBendahara = userRole?.uppercase() in listOf("BENDAHARA", "ADMIN", "DEVELOPER")
-    // HANYA DEVELOPER yang diizinkan input kas/aniv dan menghapus riwayat pembayaran
-    val canInputKasAniv = isDeveloper
-    val canDeleteTransaction = isDeveloper
+    val isBendahara = !isRestrictedRole && (userRole?.uppercase() in listOf("BENDAHARA", "ADMIN", "DEVELOPER"))
+    // ADMIN, BENDAHARA, dan DEVELOPER diizinkan input kas/aniv dan menghapus riwayat pembayaran
+    val canManageFinance = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER"))
+    val canInputKasAniv = canManageFinance
+    val canDeleteTransaction = canManageFinance
     val isOwnProfile = loggedInUserId == anggota.id
-    val isGuest = !isBendahara && !isOwnProfile
+    val isGuest = userRole?.uppercase() == "GUEST"
 
     // Dynamic extraction of all payments belonging to this specific member (by ID or Name)
     val memberPayments = remember(allPembayaran, anggota) {
@@ -301,45 +306,6 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
     val sisaCicilanDynamic = if (anggota.hargaBarang > 0.0) maxOf(0.0, anggota.hargaBarang - totalCicilanPaid) else anggota.sisaCicilan
 
     val nomorUrut = (allAnggota.indexOfFirst { it.id == anggota.id } + 1).let { if (it > 0) it.toString() else "-" }
-
-    if (isGuest) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("Akses Terbatas") },
-                    navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
-                        }
-                    }
-                )
-            }
-        ) { padding ->
-            Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                    Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Akses Dibatasi",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Anda tidak diperbolehkan melihat detail data anggota lain. Halaman ini hanya tersedia untuk profil pribadi atau pengelola (Admin/Bendahara).",
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { navController.popBackStack() }) {
-                        Text("Kembali")
-                    }
-                }
-            }
-        }
-        return
-    }
 
     // Confirmation dialog for deleting payment history (Developer only)
     paymentToDelete?.let { p ->
@@ -449,7 +415,7 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                     }
                 },
                 actions = {
-                    if (isBendahara || isOwnProfile) {
+                    if (canManageUsers) {
                         IconButton(onClick = { navController.navigate("anggota_form?id=${anggota.id}") }) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit")
                         }
@@ -807,78 +773,79 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                     }
                 }
 
-                // 4. DATA CICILAN CARD & RIWAYAT
-                if (!isGuest) {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    if (isOwnProfile) "CICILAN SAYA" else "DATA CICILAN",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
+                // 4. DATA CICILAN CARD & RIWAYAT (Full Read Access untuk ANGGOTA & GUEST)
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                if (isOwnProfile) "CICILAN SAYA" else "DATA CICILAN",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                                if (isBendahara || hasCicilanData) {
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Harga Barang", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                        Text(anggota.hargaBarang.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    
-                                    val sudahDibayar = if (anggota.hargaBarang > 0.0) totalCicilanPaid else (anggota.hargaBarang - anggota.sisaCicilan)
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Sudah Dibayar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                        Text(sudahDibayar.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Sisa Cicilan", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                        Text(sisaCicilanDynamic.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = if (sisaCicilanDynamic > 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Cicilan per Bulan", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                        Text(anggota.cicilanPerBulan.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Lama Cicilan", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                        Text(anggota.lamaCicilan.formatIntOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                                    }
-                                } else {
-                                    Text("Belum ada data cicilan.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (isBendahara || hasCicilanData) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Harga Barang", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(anggota.hargaBarang.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                                 }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                val sudahDibayar = if (anggota.hargaBarang > 0.0) totalCicilanPaid else (anggota.hargaBarang - anggota.sisaCicilan)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Sudah Dibayar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(sudahDibayar.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Sisa Cicilan", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(sisaCicilanDynamic.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = if (sisaCicilanDynamic > 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Cicilan per Bulan", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(anggota.cicilanPerBulan.formatRupiahOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Lama Cicilan", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(anggota.lamaCicilan.formatIntOrDash(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Text("Belum ada data cicilan.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
+                }
 
-                    if (isBendahara || (isOwnProfile && hasCicilanData)) {
-                        item {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Riwayat Pembayaran Cicilan (${cicilanList.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                if (isBendahara) {
-                                    if (anggota.hargaBarang > 0.0 && sisaCicilanDynamic <= 0.0) {
-                                        Text("LUNAS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                    } else {
-                                        Button(
-                                            onClick = { navController.navigate("pembayaran_form?anggotaId=${anggota.id}&jenis=CICILAN") },
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                            modifier = Modifier.height(36.dp),
-                                            enabled = anggota.hargaBarang > 0.0
-                                        ) {
-                                            Text("Bayar Cicilan", style = MaterialTheme.typography.labelMedium)
-                                        }
+                if (isBendahara || hasCicilanData) {
+                    item {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Riwayat Pembayaran Cicilan (${cicilanList.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            if (isBendahara) {
+                                if (anggota.hargaBarang > 0.0 && sisaCicilanDynamic <= 0.0) {
+                                    Text("LUNAS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Button(
+                                        onClick = { navController.navigate("pembayaran_form?anggotaId=${anggota.id}&jenis=CICILAN") },
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                        modifier = Modifier.height(36.dp),
+                                        enabled = anggota.hargaBarang > 0.0
+                                    ) {
+                                        Text("Bayar Cicilan", style = MaterialTheme.typography.labelMedium)
                                     }
                                 }
+                            } else if (anggota.hargaBarang > 0.0 && sisaCicilanDynamic <= 0.0) {
+                                Text("LUNAS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             }
                         }
+                    }
 
                         if (cicilanList.isEmpty()) {
                             item {
@@ -953,7 +920,6 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                             }
                         }
                     }
-                }
             }
 
             selectedImage?.let { image ->

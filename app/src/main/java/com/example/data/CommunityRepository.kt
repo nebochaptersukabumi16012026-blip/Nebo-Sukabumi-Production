@@ -71,12 +71,12 @@ class CommunityRepository(
                     Log.d("DASHBOARD_API", "total_anggota: ${data?.total_anggota}, kas_keliling: ${data?.kas_keliling ?: data?.total_saldo}, iuran_anniversary: ${data?.iuran_anniversary ?: data?.iuran_aniv}, saldo_kas: ${data?.saldo_kas}, belum_kas: ${data?.belum_kas ?: data?.belum_bayar_kas}, belum_anniversary: ${data?.belum_anniversary ?: data?.belum_bayar_aniv}, total_sisa_cicilan: ${data?.total_sisa_cicilan}, total_pengeluaran: ${data?.totalPengeluaran}")
                 } else {
                     _dashboardData.value = com.example.network.DashboardData()
-                    Log.e("DASHBOARD_API", "API Error: HTTP ${dashRes.code()}")
+                    Log.w("DASHBOARD_API", "API Unavailable: HTTP ${dashRes.code()}")
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _dashboardData.value = com.example.network.DashboardData()
-                Log.e("DASHBOARD_API", "Error fetching dashboard: ${e.message}")
+                Log.w("DASHBOARD_API", "Dashboard sync fallback: ${e.message}")
             }
 
             // Laporan Keuangan API
@@ -87,7 +87,7 @@ class CommunityRepository(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("LAPORAN_API", "Error fetching laporan: ${e.message}")
+                Log.w("LAPORAN_API", "Laporan sync fallback: ${e.message}")
             }
 
             // Anggota
@@ -100,7 +100,7 @@ class CommunityRepository(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("ANGGOTA_API", "Error fetching anggota: ${e.message}", e)
+                Log.w("ANGGOTA_API", "Anggota sync fallback: ${e.message}")
             }
             
             // Pengeluaran (pengeluaran.php)
@@ -113,11 +113,11 @@ class CommunityRepository(
                     _allPengeluaran.value = list
                     Log.d("PENGELUARAN_API", "Loaded ${list.size} pengeluaran items, Total: ${list.sumOf { it.nominal }}")
                 } else {
-                    Log.e("PENGELUARAN_API", "API Error: HTTP ${pengeluaranRes.code()}")
+                    Log.w("PENGELUARAN_API", "API Unavailable: HTTP ${pengeluaranRes.code()}")
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("PENGELUARAN_API", "Error fetching pengeluaran: ${e.message}", e)
+                Log.w("PENGELUARAN_API", "Pengeluaran sync fallback: ${e.message}")
             }
 
             // Kas Keliling
@@ -130,11 +130,11 @@ class CommunityRepository(
                     _kasKelilingSummary.value = result.summary
                     _allKasKeliling.value = result.transaksi
                 } else {
-                    Log.e("KAS_KELILING_API", "API Error: HTTP ${kasRes.code()}")
+                    Log.w("KAS_KELILING_API", "API Unavailable: HTTP ${kasRes.code()}")
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("KAS_KELILING_API", "Error fetching kas keliling: ${e.message}", e)
+                Log.w("KAS_KELILING_API", "Kas keliling sync fallback: ${e.message}")
             }
 
             // Merge Aniv & Cicilan to Pembayaran
@@ -148,7 +148,7 @@ class CommunityRepository(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("PEMBAYARAN_API", "Error fetching pembayaran: ${e.message}", e)
+                Log.w("PEMBAYARAN_API", "Pembayaran sync fallback: ${e.message}")
             }
 
             // 2. Fetch from iuran_anniversary table
@@ -172,7 +172,7 @@ class CommunityRepository(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("ANIV_API", "Error fetching aniv: ${e.message}", e)
+                Log.w("ANIV_API", "Aniv sync fallback: ${e.message}")
             }
 
             try {
@@ -195,7 +195,7 @@ class CommunityRepository(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("CICILAN_API", "Error fetching cicilan: ${e.message}", e)
+                Log.w("CICILAN_API", "Cicilan sync fallback: ${e.message}")
             }
             
             _allPembayaran.value = newPembayaran.sortedByDescending { it.tanggalBayar }
@@ -213,8 +213,8 @@ class CommunityRepository(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e("API_SYNC", "Gagal sync dari API: ${e.message}")
-            _syncError.value = "Gagal terhubung ke server (Timeout atau Jaringan Buruk)"
+            Log.w("API_SYNC", "Sync info: ${e.message}")
+            _syncError.value = "Gagal terhubung ke server (Offline atau Pemeliharaan)"
         }
     }
 
@@ -226,31 +226,43 @@ class CommunityRepository(
             }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            Log.e("API_DETAIL_KAS", "Error: ${e.message}")
+            Log.w("API_DETAIL_KAS", "Detail Kas sync fallback: ${e.message}")
             _syncError.value = "Gagal memuat Detail Kas: ${e.message}"
         }
     }
 
     suspend fun resetMemberKas(memberId: Int): Boolean {
-        // Immediate local state update for instant UI feedback
-        _allAnggota.value = _allAnggota.value.map {
-            if (it.id == memberId) it.copy(uangKas = 0.0) else it
-        }
-        _allPembayaran.value = _allPembayaran.value.filterNot {
-            it.anggotaId == memberId && it.jenisPembayaran.equals("KAS", ignoreCase = true)
-        }
-
         return try {
-            val response = ApiClient.apiService.deleteKas(mapOf("id" to memberId, "action" to "delete"))
-            syncFromApi()
-            fetchDetailKas()
-            response.isSuccessful
-        } catch (e: Exception) {
-            try {
-                val fallback = ApiClient.apiService.actionKas(mapOf("action" to "reset_member", "id" to memberId))
+            val response = ApiClient.apiService.deleteKas(mapOf("id" to memberId, "action" to "reset_member", "role" to "DEVELOPER", "user_role" to "DEVELOPER"))
+            if (response.isSuccessful) {
+                _allAnggota.value = _allAnggota.value.map {
+                    if (it.id == memberId) it.copy(uangKas = 0.0) else it
+                }
+                _allPembayaran.value = _allPembayaran.value.filterNot {
+                    it.anggotaId == memberId && it.jenisPembayaran.equals("KAS", ignoreCase = true)
+                }
                 syncFromApi()
                 fetchDetailKas()
-                fallback.isSuccessful
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            try {
+                val fallback = ApiClient.apiService.actionKas(mapOf("action" to "reset_member", "id" to memberId, "role" to "DEVELOPER", "user_role" to "DEVELOPER"))
+                if (fallback.isSuccessful) {
+                    _allAnggota.value = _allAnggota.value.map {
+                        if (it.id == memberId) it.copy(uangKas = 0.0) else it
+                    }
+                    _allPembayaran.value = _allPembayaran.value.filterNot {
+                        it.anggotaId == memberId && it.jenisPembayaran.equals("KAS", ignoreCase = true)
+                    }
+                    syncFromApi()
+                    fetchDetailKas()
+                    true
+                } else {
+                    false
+                }
             } catch (e2: Exception) {
                 false
             }
@@ -334,9 +346,19 @@ class CommunityRepository(
         syncFromApi()
     }
 
-    suspend fun deletePengeluaran(pengeluaran: Pengeluaran) {
-        try { ApiClient.apiService.deletePengeluaran(mapOf("id" to pengeluaran.id)) } catch (e: Exception) {}
-        syncFromApi()
+    suspend fun deletePengeluaran(pengeluaran: Pengeluaran): Boolean {
+        return try {
+            val response = ApiClient.apiService.deletePengeluaran(mapOf("id" to pengeluaran.id))
+            if (response.isSuccessful) {
+                _allPengeluaran.value = _allPengeluaran.value.filter { it.id != pengeluaran.id }
+                syncFromApi()
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
     }
 
     suspend fun getAllAnggota(): List<Anggota> = _allAnggota.value
@@ -446,55 +468,63 @@ class CommunityRepository(
         syncFromApi()
     }
 
-    suspend fun deletePembayaran(pembayaran: Pembayaran, userRole: String = "developer") {
+    suspend fun deletePembayaran(pembayaran: Pembayaran, userRole: String = "developer"): Boolean {
+        var isSuccess = false
         if (pembayaran.jenisPembayaran.equals("ANIV", ignoreCase = true)) {
             try { 
-                ApiClient.apiService.deleteRiwayatAniv(mapOf(
+                val resp = ApiClient.apiService.deleteRiwayatAniv(mapOf(
                     "id" to pembayaran.id, 
                     "anggota_id" to pembayaran.anggotaId,
                     "user_role" to userRole,
                     "role" to userRole
                 )) 
+                isSuccess = resp.isSuccessful
             } catch (e: Exception) {
-                try { ApiClient.apiService.deleteIuranAniv(mapOf("id" to pembayaran.id)) } catch (e2: Exception) {}
+                try { 
+                    val resp2 = ApiClient.apiService.deleteIuranAniv(mapOf("id" to pembayaran.id)) 
+                    isSuccess = resp2.isSuccessful
+                } catch (e2: Exception) {}
             }
         } else if (pembayaran.jenisPembayaran.equals("CICILAN", ignoreCase = true)) {
-            try { ApiClient.apiService.deleteCicilan(mapOf("id" to pembayaran.id)) } catch (e: Exception) {}
+            try { 
+                val resp = ApiClient.apiService.deleteCicilan(mapOf("id" to pembayaran.id)) 
+                isSuccess = resp.isSuccessful
+            } catch (e: Exception) {}
         } else {
             // Default KAS
             try { 
-                ApiClient.apiService.deleteRiwayatKas(mapOf(
+                val resp = ApiClient.apiService.hapusKasAnggota(mapOf(
                     "id" to pembayaran.id, 
                     "anggota_id" to pembayaran.anggotaId,
                     "user_role" to userRole,
                     "role" to userRole
                 )) 
+                isSuccess = resp.isSuccessful
             } catch (e: Exception) {
-                try { ApiClient.apiService.deletePembayaran(mapOf("id" to pembayaran.id, "user_role" to userRole)) } catch (e2: Exception) {}
+                try {
+                    val resp2 = ApiClient.apiService.deleteRiwayatKas(mapOf(
+                        "id" to pembayaran.id, 
+                        "anggota_id" to pembayaran.anggotaId,
+                        "user_role" to userRole,
+                        "role" to userRole
+                    )) 
+                    isSuccess = resp2.isSuccessful
+                } catch (e2: Exception) {
+                    try { 
+                        val resp3 = ApiClient.apiService.deletePembayaran(mapOf("id" to pembayaran.id, "user_role" to userRole)) 
+                        isSuccess = resp3.isSuccessful
+                    } catch (e3: Exception) {}
+                }
             }
         }
-        // Isolate deletion to only transaction history list
-        _allPembayaran.value = _allPembayaran.value.filter { !(it.id == pembayaran.id && it.jenisPembayaran == pembayaran.jenisPembayaran) }
 
-        // Recalculate member's individual sum instantly
-        val memberId = pembayaran.anggotaId
-        val remaining = _allPembayaran.value.filter { 
-            it.anggotaId == memberId || (pembayaran.anggotaNama.isNotBlank() && it.anggotaNama.trim().equals(pembayaran.anggotaNama.trim(), ignoreCase = true)) 
+        // HANYA update UI / State jika backend berhasil (HTTP 200 OK)
+        if (isSuccess) {
+            // HANYA hapus baris di tabel riwayat dan DILARANG KERAS mengurangi saldo akumulasi utama
+            _allPembayaran.value = _allPembayaran.value.filter { !(it.id == pembayaran.id && it.jenisPembayaran == pembayaran.jenisPembayaran) }
+            syncFromApi()
         }
-        val newKas = remaining.filter { it.jenisPembayaran.equals("KAS", ignoreCase = true) }.sumOf { it.nominal }
-        val newAniv = remaining.filter { it.jenisPembayaran.equals("ANIV", ignoreCase = true) }.sumOf { it.nominal }
-
-        _allAnggota.value = _allAnggota.value.map { mem ->
-            if (mem.id == memberId || (pembayaran.anggotaNama.isNotBlank() && mem.nama.trim().equals(pembayaran.anggotaNama.trim(), ignoreCase = true))) {
-                mem.copy(
-                    uangKas = if (pembayaran.jenisPembayaran.equals("KAS", ignoreCase = true)) newKas else mem.uangKas,
-                    iuranAniv = if (pembayaran.jenisPembayaran.equals("ANIV", ignoreCase = true)) newAniv else mem.iuranAniv
-                )
-            } else {
-                mem
-            }
-        }
-        syncFromApi()
+        return isSuccess
     }
 
     suspend fun editPembayaran(id: Int, nominalBaru: Double, keterangan: String): BaseResponse<Any> {
@@ -514,6 +544,39 @@ class CommunityRepository(
         } catch (e: Exception) {
             BaseResponse("error", e.message)
         }
+    }
+
+    suspend fun getDaftarCicilanAktif(): List<CicilanAktifItem> {
+        return try {
+            val response = ApiClient.apiService.getDaftarCicilanAktif()
+            if (response.isSuccessful && response.body()?.data != null) {
+                val list = response.body()!!.data!!
+                if (list.isNotEmpty()) list else getDaftarCicilanAktifFallback()
+            } else {
+                getDaftarCicilanAktifFallback()
+            }
+        } catch (e: Exception) {
+            getDaftarCicilanAktifFallback()
+        }
+    }
+
+    private fun getDaftarCicilanAktifFallback(): List<CicilanAktifItem> {
+        return _allAnggota.value.filter {
+            val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - it.totalCicilan)
+            sisa > 0.0
+        }.map {
+            val sudahBayar = it.totalCicilan
+            val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - sudahBayar)
+            CicilanAktifItem(
+                id = it.id,
+                nama = it.nama,
+                nra = it.nra.ifBlank { "-" },
+                harga_barang = it.hargaBarang,
+                sudah_dibayar = sudahBayar,
+                sisa_cicilan = sisa,
+                cicilan_per_bulan = it.cicilanPerBulan
+            )
+        }.sortedByDescending { it.sisa_cicilan }
     }
 
     suspend fun clearAllData() {

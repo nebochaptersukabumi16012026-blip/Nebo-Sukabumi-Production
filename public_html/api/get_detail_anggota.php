@@ -18,7 +18,6 @@ include_once 'config.php';
 $id = isset($_GET['id']) ? intval($_GET['id']) : (isset($_GET['anggota_id']) ? intval($_GET['anggota_id']) : 0);
 
 if ($id <= 0) {
-    // Try to get from JSON body if POST
     $data = json_decode(file_get_contents("php://input"));
     if (isset($data->id)) {
         $id = intval($data->id);
@@ -34,28 +33,41 @@ if ($id <= 0) {
 }
 
 try {
-    $stmt = $conn->prepare("SELECT * FROM anggota WHERE id = ?");
-    $stmt->execute(array($id));
+    // 1. Query 1: Ambil data Profil Anggota dengan COALESCE total_uang_kas agar selalu terbaca meskipun riwayat kosong
+    $stmt = $conn->prepare("SELECT a.*, COALESCE((SELECT SUM(nominal) FROM riwayat_kas WHERE id_anggota = a.id), 0) AS total_uang_kas FROM anggota a WHERE a.id = ? OR a.nra = ?");
+    $stmt->execute(array($id, $id));
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($row) {
-        // Explicitly map values
-        $uangKas = floatval(isset($row['uang_kas']) ? $row['uang_kas'] : 0);
+        $rowUangKas = floatval(isset($row['uang_kas']) ? $row['uang_kas'] : 0);
+        $totalUangKas = floatval(isset($row['total_uang_kas']) ? $row['total_uang_kas'] : 0);
+        
+        // Prioritaskan kolom saldo tabel anggota (uang_kas) jika ada, atau max dengan total riwayat yang tersisa
+        $uangKas = ($rowUangKas > 0) ? $rowUangKas : max($rowUangKas, $totalUangKas);
+        if ($uangKas <= 0 && $rowUangKas > 0) {
+            $uangKas = $rowUangKas;
+        }
+
         $iuranAniv = floatval(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : 0);
         $totalCicilan = floatval(isset($row['total_cicilan']) ? $row['total_cicilan'] : 0);
         $hargaBarang = floatval(isset($row['harga_barang']) ? $row['harga_barang'] : 0);
         $sisaCicilan = floatval(isset($row['sisa_cicilan']) ? $row['sisa_cicilan'] : 0);
         $cicilanPerBulan = floatval(isset($row['cicilan_per_bulan']) ? $row['cicilan_per_bulan'] : 0);
+        $nraVal = isset($row['nra']) ? $row['nra'] : '';
+
+        // 2. Query 2: Ambil riwayat kas dari tabel riwayat_kas / kas_komunitas WHERE nra = :nra / id_anggota = :id ORDER BY tanggal DESC
+        $stmt_rk = $conn->prepare("SELECT * FROM riwayat_kas WHERE id_anggota = ? OR id_anggota IN (SELECT id FROM anggota WHERE nra = ?) ORDER BY id DESC");
+        $stmt_rk->execute(array($id, $nraVal));
+        $riwayatKasDb = $stmt_rk->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt_kk = $conn->prepare("SELECT * FROM kas_komunitas WHERE nra = ? ORDER BY tanggal DESC");
+        $stmt_kk->execute(array($nraVal));
+        $kasKomunitasDb = $stmt_kk->fetchAll(PDO::FETCH_ASSOC);
 
         // Fetch payment history for this member if exists
-        $stmt_pay = $conn->prepare("SELECT * FROM pembayaran WHERE anggotaId = ? ORDER BY tanggal DESC");
-        $stmt_pay->execute(array($id));
+        $stmt_pay = $conn->prepare("SELECT * FROM pembayaran WHERE anggotaId = ? OR anggotaId IN (SELECT id FROM anggota WHERE nra = ?) ORDER BY tanggal DESC");
+        $stmt_pay->execute(array($id, $nraVal));
         $riwayatPembayaran = $stmt_pay->fetchAll(PDO::FETCH_ASSOC);
-
-        // Fetch from riwayat_kas
-        $stmt_rk = $conn->prepare("SELECT * FROM riwayat_kas WHERE id_anggota = ? ORDER BY id DESC");
-        $stmt_rk->execute(array($id));
-        $riwayatKasDb = $stmt_rk->fetchAll(PDO::FETCH_ASSOC);
 
         // Fetch from riwayat_aniv
         $stmt_ra = $conn->prepare("SELECT * FROM riwayat_aniv WHERE id_anggota = ? ORDER BY id DESC");
@@ -74,7 +86,7 @@ try {
             );
         }
         foreach ($riwayatPembayaran as $p) {
-            if (in_array(strtolower(isset($p['jenisPembayaran']) ? $p['jenisPembayaran'] : ''), array('kas', 'uang_kas'])) {
+            if (in_array(strtolower(isset($p['jenisPembayaran']) ? $p['jenisPembayaran'] : ''), array('kas', 'uang_kas'))) {
                 $exists = false;
                 foreach ($riwayat_kas as $rkItem) {
                     if ($rkItem['id'] == intval($p['id'])) {
@@ -95,35 +107,6 @@ try {
             }
         }
 
-        // Auto-generate fallback for riwayat_kas if empty but uang_kas > 0
-        if (empty($riwayat_kas) && $uangKas > 0) {
-            $tglStr = !empty($row['tgl_gabung']) ? $row['tgl_gabung'] : date('d M Y');
-            $riwayat_kas[] = array(
-                "id" => intval($row['id']),
-                "id_transaksi" => "kas_" . $row['id'],
-                "nominal" => $uangKas,
-                "tanggal" => $tglStr,
-                "keterangan" => "Pembayaran Uang Kas",
-                "buktiPembayaran" => null
-            );
-
-            // Auto-heal/insert into database so subsequent lists remain populated
-            try {
-                $nowTs = time() * 1000;
-                $formattedNow = date('Y-m-d H:i:s');
-                $stmt_heal = $conn->prepare("INSERT INTO pembayaran (anggotaId, anggotaNama, jenisPembayaran, nominal, tanggal, keterangan) VALUES (?, ?, 'KAS', ?, ?, 'Pembayaran Uang Kas')");
-                $stmt_heal->execute(array($id, isset($row['nama']) ? $row['nama'] : '', $uangKas, $nowTs));
-                $newPemId = $conn->lastInsertId();
-
-                $stmt_heal_rk = $conn->prepare("INSERT INTO riwayat_kas (id_anggota, nominal, tanggal, keterangan, created_at) VALUES (?, ?, ?, 'Pembayaran Uang Kas', ?)");
-                $stmt_heal_rk->execute(array($id, $uangKas, $formattedNow, $nowTs));
-
-                // Re-fetch to reflect generated ID
-                $stmt_pay->execute(array($id));
-                $riwayatPembayaran = $stmt_pay->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-        }
-
         // Build riwayat_aniv list
         $riwayat_aniv = array();
         foreach ($riwayatAnivDb as $ra) {
@@ -136,7 +119,7 @@ try {
             );
         }
         foreach ($riwayatPembayaran as $p) {
-            if (in_array(strtolower(isset($p['jenisPembayaran']) ? $p['jenisPembayaran'] : ''), array('aniv', 'iuran_aniv', 'anniversary'])) {
+            if (in_array(strtolower(isset($p['jenisPembayaran']) ? $p['jenisPembayaran'] : ''), array('aniv', 'iuran_aniv', 'anniversary'))) {
                 $exists = false;
                 foreach ($riwayat_aniv as $raItem) {
                     if ($raItem['id'] == intval($p['id'])) {
@@ -155,19 +138,6 @@ try {
                     );
                 }
             }
-        }
-
-        // Auto-generate fallback for riwayat_aniv if empty but iuran_aniv > 0
-        if (empty($riwayat_aniv) && $iuranAniv > 0) {
-            $tglStr = !empty($row['tgl_gabung']) ? $row['tgl_gabung'] : date('d M Y');
-            $riwayat_aniv[] = array(
-                "id" => intval($row['id']),
-                "id_transaksi" => "aniv_" . $row['id'],
-                "nominal" => $iuranAniv,
-                "tanggal" => $tglStr,
-                "keterangan" => "Iuran Anniversary",
-                "buktiPembayaran" => null
-            );
         }
 
         $response = array(
@@ -207,7 +177,6 @@ try {
         echo json_encode(array("status" => "error", "message" => "Anggota tidak ditemukan"));
     }
 } catch (Exception $e) {
-    // http_response_code(500);
     echo json_encode(array("status" => "error", "message" => "Database error: " . $e->getMessage()));
 }
 ?>

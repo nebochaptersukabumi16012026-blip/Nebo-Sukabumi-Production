@@ -54,6 +54,10 @@ data class DashboardData(
     @Json(name = "iuran_anniversary") val iuran_anniversary: Double? = null,
     @Json(name = "total_pengeluaran") val totalPengeluaran: Double? = null,
     @Json(name = "total_sisa_cicilan") val total_sisa_cicilan: Double? = null,
+    @Json(name = "total_harga_barang") val total_harga_barang: Double? = null,
+    @Json(name = "total_sudah_dibayar") val total_sudah_dibayar: Double? = null,
+    @Json(name = "anggota_mencicil") val anggota_mencicil: Int? = null,
+    @Json(name = "cicilan") val cicilan: CicilanLaporan? = null,
     @Json(name = "total_saldo") val total_saldo: Double? = null,
     @Json(name = "kas_keliling") val kas_keliling: Double? = null,
     @Json(name = "kas_keliling_bulan_ini") val kas_keliling_bulan_ini: Double? = null,
@@ -130,6 +134,16 @@ data class CicilanDto(
     val nominal: Double,
     val tanggal: String,
     val keterangan: String
+)
+
+data class CicilanAktifItem(
+    val id: Int = 0,
+    val nama: String = "",
+    val nra: String? = "-",
+    val harga_barang: Double = 0.0,
+    val sudah_dibayar: Double = 0.0,
+    val sisa_cicilan: Double = 0.0,
+    val cicilan_per_bulan: Double = 0.0
 )
 
 data class AbsensiDto(
@@ -228,6 +242,9 @@ interface ApiService {
     @POST("delete_riwayat_kas.php")
     suspend fun deleteRiwayatKas(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
 
+    @POST("hapus_kas_anggota.php")
+    suspend fun hapusKasAnggota(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
+
     @POST("delete_riwayat_aniv.php")
     suspend fun deleteRiwayatAniv(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
 
@@ -255,6 +272,9 @@ interface ApiService {
 
     @GET("cicilan.php")
     suspend fun getCicilan(): Response<BaseResponse<List<CicilanDto>>>
+
+    @GET("get_daftar_cicilan_aktif.php")
+    suspend fun getDaftarCicilanAktif(): Response<BaseResponse<List<CicilanAktifItem>>>
 
     @POST("cicilan.php")
     suspend fun addCicilan(@Body dto: CicilanDto): Response<BaseResponse<Any>>

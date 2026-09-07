@@ -1,5 +1,5 @@
 <?php
-// delete_riwayat_kas.php - Hapus riwayat kas anggota secara presisi dan permanen
+// hapus_riwayat_kas_anggota.php - Perbaikan dan debugging hapus riwayat kas anggota
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: POST, DELETE, OPTIONS");
@@ -15,21 +15,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 include_once 'config.php';
 
+// Pastikan $pdo tersedia (alias dari $conn jika config.php menggunakan $conn)
 if (!isset($pdo) && isset($conn)) {
     $pdo = $conn;
 }
 
 $rawInput = file_get_contents("php://input");
-$input = json_decode($rawInput, true);
+$data = json_decode($rawInput, true); // associative array
 
 $id = null;
-if (isset($input['id'])) {
-    $id = intval($input['id']);
+if (isset($data['id'])) {
+    $id = intval($data['id']);
 } elseif (isset($_POST['id'])) {
     $id = intval($_POST['id']);
 } elseif (isset($_GET['id'])) {
     $id = intval($_GET['id']);
 } else {
+    // Try object decode fallback
     $dataObj = json_decode($rawInput);
     if (isset($dataObj->id)) {
         $id = intval($dataObj->id);
@@ -52,10 +54,12 @@ try {
 
     $rowCount = 0;
 
+    // 1. Cek dan hapus dari tabel riwayat_kas (kolom id)
     $stmt = $pdo->prepare("DELETE FROM riwayat_kas WHERE id = :id");
     $stmt->execute(array(':id' => $id));
     $rowCount = $stmt->rowCount();
 
+    // 2. Jika tidak ditemukan di riwayat_kas, cek tabel pembayaran (kolom id)
     if ($rowCount <= 0) {
         $stmt_p = $pdo->prepare("DELETE FROM pembayaran WHERE id = :id");
         $stmt_p->execute(array(':id' => $id));
@@ -70,13 +74,13 @@ try {
         http_response_code(200);
         echo json_encode(array(
             'status' => 'success',
-            'message' => 'Riwayat berhasil dihapus dari MySQL'
+            'message' => 'Data terhapus dari MySQL'
         ));
     } else {
         http_response_code(404);
         echo json_encode(array(
             'status' => 'error',
-            'message' => 'Gagal hapus: ID transaksi tidak ditemukan di database'
+            'message' => 'Gagal hapus: ID tidak ditemukan di MySQL'
         ));
     }
 

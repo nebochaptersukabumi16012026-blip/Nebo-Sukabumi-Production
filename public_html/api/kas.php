@@ -5,6 +5,31 @@ include_once 'config.php';
 $data = json_decode(file_get_contents("php://input"));
 $method = $_SERVER['REQUEST_METHOD'];
 
+$user_role = '';
+if (isset($data->role)) {
+    $user_role = trim($data->role);
+} elseif (isset($data->user_role)) {
+    $user_role = trim($data->user_role);
+} elseif (isset($_POST['role'])) {
+    $user_role = trim($_POST['role']);
+} elseif (isset($_POST['user_role'])) {
+    $user_role = trim($_POST['user_role']);
+} elseif (isset($_GET['role'])) {
+    $user_role = trim($_GET['role']);
+} elseif (isset($_GET['user_role'])) {
+    $user_role = trim($_GET['user_role']);
+}
+
+$user_role_upper = strtoupper($user_role);
+if ($user_role_upper !== 'ADMIN' && $user_role_upper !== 'BENDAHARA' && $user_role_upper !== 'DEVELOPER') {
+    http_response_code(403);
+    echo json_encode(array(
+        'status' => 'error',
+        'message' => 'Akses ditolak: Hanya ADMIN dan BENDAHARA yang memiliki hak akses.'
+    ));
+    exit();
+}
+
 if ($method == 'POST') {
     // Aksi Reset Kas Anggota (Sesuai Instruksi)
     if (isset($data->action) && $data->action == 'reset_all') {

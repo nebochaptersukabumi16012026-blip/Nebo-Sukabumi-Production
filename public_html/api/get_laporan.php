@@ -59,14 +59,64 @@ if ($method == 'GET') {
 
         $aniv_saldo = max(0, $aniv_in - $aniv_out);
 
-        // 4. CICILAN (Informasi Pelengkap)
-        $stmt_cicilan = $conn->query("SELECT COALESCE(SUM(harga_barang), 0) AS total_harga, COALESCE(SUM(sisa_cicilan), 0) AS total_sisa FROM anggota WHERE harga_barang > 0");
-        if ($stmt_cicilan) {
-            $row_cicilan = $stmt_cicilan->fetch(PDO::FETCH_ASSOC);
-            $cicilan_total_harga = floatval(isset($row_cicilan['total_harga']) ? $row_cicilan['total_harga'] : 0);
-            $cicilan_sisa = floatval(isset($row_cicilan['total_sisa']) ? $row_cicilan['total_sisa'] : 0);
+        // 4. CICILAN (Hanya untuk anggota yang MASIH MEMILIKI SISA CICILAN > 0)
+        $cicilan_total_harga = 0.0;
+        $cicilan_sudah_bayar = 0.0;
+        $cicilan_sisa = 0.0;
+        $anggota_mencicil = 0;
+
+        $queryFromCicilanTable = false;
+        try {
+            $checkCol = $conn->query("SHOW COLUMNS FROM cicilan LIKE 'harga_barang'");
+            if ($checkCol && $checkCol->rowCount() > 0) {
+                $queryFromCicilanTable = true;
+            }
+        } catch (Exception $ignored) {
+            $queryFromCicilanTable = false;
         }
-        $cicilan_sudah_bayar = $cicilan_total_harga - $cicilan_sisa;
+
+        if ($queryFromCicilanTable) {
+            $stmt_cicilan = $conn->query("SELECT 
+                COALESCE(SUM(harga_barang), 0) AS total_harga_barang,
+                COALESCE(SUM(sudah_dibayar), 0) AS total_sudah_dibayar,
+                COALESCE(SUM(harga_barang - sudah_dibayar), 0) AS total_sisa_cicilan,
+                COUNT(DISTINCT nra) AS anggota_mencicil
+            FROM cicilan 
+            WHERE (harga_barang - sudah_dibayar) > 0");
+
+            if ($stmt_cicilan && $row_c = $stmt_cicilan->fetch(PDO::FETCH_ASSOC)) {
+                $anggota_mencicil = intval($row_c['anggota_mencicil'] ?? 0);
+                if ($anggota_mencicil > 0) {
+                    $cicilan_total_harga = floatval($row_c['total_harga_barang'] ?? 0);
+                    $cicilan_sudah_bayar = floatval($row_c['total_sudah_dibayar'] ?? 0);
+                    $cicilan_sisa = floatval($row_c['total_sisa_cicilan'] ?? 0);
+                }
+            }
+        } else {
+            $stmt_cicilan = $conn->query("SELECT 
+                COALESCE(SUM(harga_barang), 0) AS total_harga_barang,
+                COALESCE(SUM(total_cicilan), 0) AS total_sudah_dibayar,
+                COALESCE(SUM(CASE WHEN sisa_cicilan > 0 THEN sisa_cicilan ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) END), 0) AS total_sisa_cicilan,
+                COUNT(DISTINCT nra) AS anggota_mencicil
+            FROM anggota 
+            WHERE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0) > 0 OR COALESCE(sisa_cicilan, 0) > 0)");
+
+            if ($stmt_cicilan && $row_c = $stmt_cicilan->fetch(PDO::FETCH_ASSOC)) {
+                $anggota_mencicil = intval($row_c['anggota_mencicil'] ?? 0);
+                if ($anggota_mencicil > 0) {
+                    $cicilan_total_harga = floatval($row_c['total_harga_barang'] ?? 0);
+                    $cicilan_sudah_bayar = floatval($row_c['total_sudah_dibayar'] ?? 0);
+                    $cicilan_sisa = floatval($row_c['total_sisa_cicilan'] ?? 0);
+                }
+            }
+        }
+
+        if ($anggota_mencicil <= 0) {
+            $cicilan_total_harga = 0.0;
+            $cicilan_sudah_bayar = 0.0;
+            $cicilan_sisa = 0.0;
+            $anggota_mencicil = 0;
+        }
 
         echo json_encode(array(
             "status" => "success",

@@ -1,5 +1,5 @@
 <?php
-// delete_riwayat_kas.php - Hapus riwayat kas anggota secara presisi dan permanen
+// hapus_kas_anggota.php - Hapus riwayat kas anggota secara presisi dan permanen
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: POST, DELETE, OPTIONS");
@@ -21,6 +21,38 @@ if (!isset($pdo) && isset($conn)) {
 
 $rawInput = file_get_contents("php://input");
 $input = json_decode($rawInput, true);
+
+$user_role = '';
+if (isset($input['role'])) {
+    $user_role = trim($input['role']);
+} elseif (isset($input['user_role'])) {
+    $user_role = trim($input['user_role']);
+} elseif (isset($_POST['role'])) {
+    $user_role = trim($_POST['role']);
+} elseif (isset($_POST['user_role'])) {
+    $user_role = trim($_POST['user_role']);
+} elseif (isset($_GET['role'])) {
+    $user_role = trim($_GET['role']);
+} elseif (isset($_GET['user_role'])) {
+    $user_role = trim($_GET['user_role']);
+} else {
+    $dataObj = json_decode($rawInput);
+    if (isset($dataObj->role)) {
+        $user_role = trim($dataObj->role);
+    } elseif (isset($dataObj->user_role)) {
+        $user_role = trim($dataObj->user_role);
+    }
+}
+
+$user_role_upper = strtoupper($user_role);
+if ($user_role_upper !== 'ADMIN' && $user_role_upper !== 'BENDAHARA' && $user_role_upper !== 'DEVELOPER') {
+    http_response_code(403);
+    echo json_encode(array(
+        'status' => 'error',
+        'message' => 'Akses ditolak: Hanya ADMIN dan BENDAHARA yang memiliki hak akses.'
+    ));
+    exit();
+}
 
 $id = null;
 if (isset($input['id'])) {
@@ -52,10 +84,12 @@ try {
 
     $rowCount = 0;
 
+    // Eksekusi hapus tegas pada riwayat_kas
     $stmt = $pdo->prepare("DELETE FROM riwayat_kas WHERE id = :id");
     $stmt->execute(array(':id' => $id));
     $rowCount = $stmt->rowCount();
 
+    // Jika tidak ditemukan di riwayat_kas, cek tabel pembayaran
     if ($rowCount <= 0) {
         $stmt_p = $pdo->prepare("DELETE FROM pembayaran WHERE id = :id");
         $stmt_p->execute(array(':id' => $id));
@@ -67,6 +101,7 @@ try {
     }
 
     if ($rowCount > 0) {
+        // SYARAT MUTLAK: DILARANG mengurangi atau mengubah Total Saldo Utama Dashboard (tabel saldo_akumulasi)
         http_response_code(200);
         echo json_encode(array(
             'status' => 'success',

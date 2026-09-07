@@ -28,13 +28,18 @@ if (isset($data->role)) {
     $role = trim($_POST['role']);
 } elseif (isset($_POST['user_role'])) {
     $role = trim($_POST['user_role']);
+} elseif (isset($_GET['role'])) {
+    $role = trim($_GET['role']);
+} elseif (isset($_GET['user_role'])) {
+    $role = trim($_GET['user_role']);
 }
 
-if (empty($role) || strtolower($role) !== 'developer') {
+$role_upper = strtoupper($role);
+if ($role_upper !== 'ADMIN' && $role_upper !== 'BENDAHARA' && $role_upper !== 'DEVELOPER') {
     http_response_code(403);
     echo json_encode(array(
         "status" => "error",
-        "message" => "Akses Ditolak: Hanya akun Developer yang diizinkan menginput data Kas!"
+        "message" => "Akses ditolak: Hanya ADMIN dan BENDAHARA yang memiliki hak akses."
     ));
     exit();
 }

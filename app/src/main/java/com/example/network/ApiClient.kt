@@ -6,6 +6,8 @@ import com.squareup.moshi.ToJson
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -68,21 +70,93 @@ object ApiClient {
         
         val responseBody = response.body
         if (responseBody != null) {
-            val source = responseBody.source()
-            source.request(Long.MAX_VALUE)
-            val buffer = source.buffer
-            val responseBodyString = buffer.clone().readUtf8()
-            if (response.isSuccessful) {
-                android.util.Log.d("LOGIN_API", "Response Body: $responseBodyString")
-            } else {
-                android.util.Log.d("LOGIN_API", "Error Body: $responseBodyString")
+            try {
+                val source = responseBody.source()
+                source.request(Long.MAX_VALUE)
+                val buffer = source.buffer
+                val responseBodyString = buffer.clone().readUtf8()
+                if (response.isSuccessful) {
+                    android.util.Log.d("LOGIN_API", "Response Body: $responseBodyString")
+                } else {
+                    android.util.Log.d("LOGIN_API", "Error Body: $responseBodyString")
+                }
+            } catch (e: Exception) {
+                android.util.Log.d("LOGIN_API", "Error reading response body: ${e.message}")
             }
         }
         
         response
     }
 
-    private class RetryInterceptor(private val maxRetries: Int = 3) : okhttp3.Interceptor {
+    // Interceptor to prevent HTML pages, cPanel suspended redirects, or non-JSON payloads from crashing Moshi
+    private val jsonValidationInterceptor = okhttp3.Interceptor { chain ->
+        val request = chain.request()
+        val response = chain.proceed(request)
+
+        // Block 3xx redirects (e.g. 302 to cgi-sys/suspendedpage.cgi)
+        if (response.isRedirect || response.code in 300..399) {
+            val location = response.header("Location") ?: ""
+            android.util.Log.w("API_CLIENT", "Redirect detected (${response.code}) to: $location. Blocking redirect to non-API target.")
+            val errorJson = """{"status":"error","message":"Layanan server dialihkan ke: $location (Hosting Suspended/Redirect)","data":null}"""
+            return@Interceptor response.newBuilder()
+                .code(503)
+                .message("Service Unavailable (Server Redirected)")
+                .body(errorJson.toResponseBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+                .build()
+        }
+
+        // If response is 2xx, verify it is truly valid JSON and not an HTML frameset / error landing page
+        if (response.isSuccessful) {
+            val responseBody = response.body
+            if (responseBody != null) {
+                val contentType = responseBody.contentType()
+                val isHtmlHeader = contentType != null && (
+                    contentType.subtype.contains("html", ignoreCase = true) ||
+                    contentType.subtype.contains("xml", ignoreCase = true) ||
+                    (contentType.type.contains("text", ignoreCase = true) && !contentType.subtype.contains("json", ignoreCase = true))
+                )
+
+                if (isHtmlHeader) {
+                    android.util.Log.w("API_CLIENT", "HTML Content-Type detected from ${request.url}: $contentType")
+                    val errorJson = """{"status":"error","message":"Server mengembalikan respon HTML (Pemeliharaan/Ditangguhkan)","data":null}"""
+                    return@Interceptor response.newBuilder()
+                        .code(503)
+                        .message("Service Unavailable (HTML Response Received)")
+                        .body(errorJson.toResponseBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+                        .build()
+                }
+
+                try {
+                    val source = responseBody.source()
+                    source.request(512)
+                    val buffer = source.buffer
+                    val prefix = buffer.clone().readUtf8().trim()
+
+                    val isNonJson = prefix.startsWith("<") ||
+                            prefix.contains("<html", ignoreCase = true) ||
+                            prefix.contains("<frameset", ignoreCase = true) ||
+                            prefix.contains("suspended", ignoreCase = true) ||
+                            (!prefix.startsWith("{") && !prefix.startsWith("["))
+
+                    if (isNonJson) {
+                        android.util.Log.w("API_CLIENT", "Non-JSON response detected from ${request.url}: ${prefix.take(120)}")
+                        val errorJson = """{"status":"error","message":"Server sedang dalam pemeliharaan atau akun hosting ditangguhkan","data":null}"""
+                        return@Interceptor response.newBuilder()
+                            .code(503)
+                            .message("Service Unavailable (HTML / Non-JSON Response)")
+                            .body(errorJson.toResponseBody("application/json; charset=utf-8".toMediaTypeOrNull()))
+                            .build()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("API_CLIENT", "Error verifying response body format: ${e.message}")
+                }
+            }
+        }
+
+        response
+    }
+
+    private class RetryInterceptor(private val maxRetries: Int = 1) : okhttp3.Interceptor {
         override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
             val request = chain.request()
             var response: okhttp3.Response? = null
@@ -93,7 +167,7 @@ object ApiClient {
                     response = chain.proceed(request)
                     if (response.isSuccessful) return response
                     
-                    // Retry on 5xx errors or 408 Timeout
+                    // Don't retry redirects or client errors
                     if (response.code !in 500..599 && response.code != 408) return response
                     
                     if (i < maxRetries) {
@@ -106,7 +180,7 @@ object ApiClient {
                 
                 if (i < maxRetries) {
                     try {
-                        Thread.sleep(1000L * (i + 1))
+                        Thread.sleep(500L * (i + 1))
                     } catch (ie: InterruptedException) {
                         Thread.currentThread().interrupt()
                         throw lastException ?: IOException("Retry interrupted", ie)
@@ -118,12 +192,15 @@ object ApiClient {
     }
 
     private val client = OkHttpClient.Builder()
-        .addInterceptor(RetryInterceptor(3))
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .addInterceptor(jsonValidationInterceptor)
+        .addInterceptor(RetryInterceptor(1))
         .addInterceptor(customLoggingInterceptor)
         .addInterceptor(loggingInterceptor)
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
 
@@ -131,7 +208,7 @@ object ApiClient {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(client)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
             .build()
             .create(ApiService::class.java)
     }

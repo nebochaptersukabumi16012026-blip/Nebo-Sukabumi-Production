@@ -38,6 +38,18 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.DaftarCicilanAnggotaActivity"
+            android:exported="false"
+            android:label="Daftar Cicilan Anggota"
+            android:theme="@style/Theme.MyApplication" />
+
+        <activity
+            android:name=".ui.DetailAnggotaActivity"
+            android:exported="false"
+            android:label="Detail Anggota"
+            android:theme="@style/Theme.MyApplication" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

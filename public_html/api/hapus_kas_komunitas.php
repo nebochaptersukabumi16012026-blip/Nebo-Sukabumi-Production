@@ -42,8 +42,10 @@ try {
     $stmt_del = $conn->prepare("DELETE FROM riwayat_kas WHERE id = :id");
     $stmt_del->execute(array(':id' => $id));
 
-    $stmt_upd_anggota = $conn->prepare("UPDATE anggota SET uang_kas = 0 WHERE id = :id");
-    $stmt_upd_anggota->execute(array(':id' => $id));
+    if ($stmt_del->rowCount() <= 0) {
+        $stmt_del_p = $conn->prepare("DELETE FROM pembayaran WHERE id = :id");
+        $stmt_del_p->execute(array(':id' => $id));
+    }
 
     $stmt_in = $conn->query("SELECT COALESCE(SUM(uang_kas), 0) as total FROM anggota");
     $total_pemasukan = floatval($stmt_in->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
@@ -53,17 +55,7 @@ try {
 
     $saldo_saat_ini = max(0, $total_pemasukan - $total_pengeluaran);
 
-    try {
-        $stmt_upd = $conn->prepare("
-            INSERT INTO saldo_akumulasi (jenis_kas, total_akumulasi_masuk, total_akumulasi_keluar) 
-            VALUES ('kas_utama', :in, :out) 
-            ON DUPLICATE KEY UPDATE 
-                total_akumulasi_masuk = :in,
-                total_akumulasi_keluar = :out
-        ");
-        $stmt_upd->execute(array(':in' => $total_pemasukan, ':out' => $total_pengeluaran));
-    } catch (Exception $e_master) {}
-
+    // KUNCI LOGIKA UTAMA: DILARANG KERAS mengurangi/mengubah angka di tabel saldo_akumulasi
     $conn->commit();
 
     http_response_code(200);

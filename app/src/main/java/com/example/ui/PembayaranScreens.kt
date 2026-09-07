@@ -154,10 +154,10 @@ fun PembayaranFormScreen(
     jenisPembayaran: String
 ) {
     val userRole by viewModel.loggedInUserRole.collectAsState()
-    val isDeveloper = userRole?.equals("DEVELOPER", ignoreCase = true) == true
+    val canManageFinance = userRole?.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER")
     val isKasOrAniv = jenisPembayaran.equals("KAS", ignoreCase = true) || jenisPembayaran.equals("ANIV", ignoreCase = true)
 
-    if (isKasOrAniv && !isDeveloper) {
+    if (isKasOrAniv && !canManageFinance) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -453,10 +453,23 @@ fun LaporanScreen(navController: NavController, viewModel: CommunityViewModel) {
         ?: dashboardData?.kas_anniversary_data?.saldo_aniv 
         ?: (totalPemasukanAniv - totalPengeluaranAniv)
     
-    // 4. CICILAN
-    val totalSisaCicilan = dashboardData?.total_sisa_cicilan ?: anggotaList.filter { it.hargaBarang > 0.0 }.sumOf { it.sisaCicilan }
-    val totalHargaBarang = anggotaList.filter { it.hargaBarang > 0.0 }.sumOf { it.hargaBarang }
-    val totalSudahDibayar = totalHargaBarang - totalSisaCicilan
+    // 4. CICILAN (Hanya anggota yang masih memiliki sisa cicilan > 0)
+    val cicilanAktifList by viewModel.cicilanAktifList.collectAsState()
+    val anggotaAktifCicilan = anggotaList.filter { it.sisaCicilan > 0.0 || (it.hargaBarang > 0.0 && (it.hargaBarang - it.totalCicilan) > 0.0) }
+    val anggotaMencicilCount = dashboardData?.anggota_mencicil 
+        ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.size else anggotaAktifCicilan.size)
+    
+    val totalHargaBarang = if (anggotaMencicilCount == 0) 0.0 else (
+        dashboardData?.total_harga_barang 
+            ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.sumOf { it.harga_barang } else anggotaAktifCicilan.sumOf { it.hargaBarang })
+    )
+    val totalSisaCicilan = if (anggotaMencicilCount == 0) 0.0 else (
+        dashboardData?.total_sisa_cicilan 
+            ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.sumOf { it.sisa_cicilan } else anggotaAktifCicilan.sumOf { if (it.sisaCicilan > 0) it.sisaCicilan else maxOf(0.0, it.hargaBarang - it.totalCicilan) })
+    )
+    val totalSudahDibayar = if (anggotaMencicilCount == 0) 0.0 else (
+        dashboardData?.total_sudah_dibayar ?: maxOf(0.0, totalHargaBarang - totalSisaCicilan)
+    )
     val totalPengeluaranCicilan = pengeluaranList.filter { it.jenisKas.equals("Dana Cicilan", ignoreCase = true) || it.jenisKas.equals("Cicilan", ignoreCase = true) }.sumOf { it.nominal }
     val saldoDanaCicilan = totalSudahDibayar - totalPengeluaranCicilan
     

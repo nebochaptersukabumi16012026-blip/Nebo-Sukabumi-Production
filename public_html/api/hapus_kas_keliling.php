@@ -52,18 +52,7 @@ try {
 
     $saldo = max(0, $total_pemasukan - $total_pengeluaran);
 
-    // Sinkronisasi saldo_akumulasi khusus kas_keliling
-    try {
-        $stmt_upd = $conn->prepare("
-            INSERT INTO saldo_akumulasi (jenis_kas, total_akumulasi_masuk, total_akumulasi_keluar) 
-            VALUES ('kas_keliling', :in, :out) 
-            ON DUPLICATE KEY UPDATE 
-                total_akumulasi_masuk = :in,
-                total_akumulasi_keluar = :out
-        ");
-        $stmt_upd->execute(array(':in' => $total_pemasukan, ':out' => $total_pengeluaran));
-    } catch (Exception $e_master) {}
-
+    // KUNCI LOGIKA UTAMA: Hapus hanya riwayat kas_keliling, DILARANG mengurangi saldo_akumulasi dashboard utama
     $conn->commit();
 
     http_response_code(200);

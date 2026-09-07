@@ -114,6 +114,20 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     private val _resetRequests = MutableStateFlow<List<com.example.network.ResetPasswordRequest>>(emptyList())
     val resetRequests: StateFlow<List<com.example.network.ResetPasswordRequest>> = _resetRequests.asStateFlow()
 
+    private val _cicilanAktifList = MutableStateFlow<List<com.example.network.CicilanAktifItem>>(emptyList())
+    val cicilanAktifList: StateFlow<List<com.example.network.CicilanAktifItem>> = _cicilanAktifList.asStateFlow()
+
+    fun fetchCicilanAktif() {
+        viewModelScope.launch {
+            try {
+                val list = repository.getDaftarCicilanAktif()
+                _cicilanAktifList.value = list
+            } catch (e: Exception) {
+                // Ignore fallback handles it
+            }
+        }
+    }
+
     private val _isDarkMode = MutableStateFlow(true)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
@@ -152,6 +166,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     fun syncFromApi() {
         viewModelScope.launch {
             repository.syncFromApi()
+            fetchCicilanAktif()
             val role = _loggedInUserRole.value
             if (role == "ADMIN" || role == "BENDAHARA" || role == "DEVELOPER") {
                 fetchResetRequests()
@@ -161,6 +176,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
 
     suspend fun syncFromApiSuspend() {
         repository.syncFromApi()
+        fetchCicilanAktif()
         val role = _loggedInUserRole.value
         if (role == "ADMIN" || role == "BENDAHARA" || role == "DEVELOPER") {
             fetchResetRequests()
@@ -257,6 +273,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         val savedUserNra = sharedPrefs.getString("session_user_nra", null)
         if (savedRole != null) {
             _loggedInUserRole.value = savedRole
+            SessionManager.setRole(savedRole)
             _loggedInUserId.value = if (savedUserId != -1) savedUserId else -1
             _loggedInUserName.value = savedUserName
             _loggedInUserNra.value = savedUserNra
@@ -1188,6 +1205,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                             val memberNra = data.nra ?: data.username
 
                             _loggedInUserRole.value = data.role
+                            SessionManager.setRole(data.role)
                             _loggedInUserId.value = data.id
                             _loggedInUserName.value = memberName
                             _loggedInUserNra.value = memberNra
@@ -1273,6 +1291,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     }
     fun loginGuest() {
         _loggedInUserRole.value = "GUEST"
+        SessionManager.setRole("GUEST")
         _loggedInUserId.value = -1
         _loggedInUserName.value = "Guest"
         _loggedInUserNra.value = "-"
@@ -1286,6 +1305,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun logout() {
         _loggedInUserRole.value = null
+        SessionManager.setRole(null)
         _loggedInUserId.value = null
         _loggedInUserName.value = null
         _loggedInUserNra.value = null
@@ -2043,19 +2063,19 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                             try {
                                 repository.syncFromApi() // This refreshes everything including dashboard
                             } catch (e: Exception) {
-                                android.util.Log.e("API_CHECK", "Dashboard Fetch Exception: ${e.message}", e)
+                                android.util.Log.d("API_CHECK", "Dashboard Fetch: ${e.message}")
                             }
                             
                         } else {
                             _serverStatus.value = ServerStatus.OFFLINE
-                            android.util.Log.e("API_CHECK", "API Error: HTTP ${res.code()} - ${res.message()}")
+                            android.util.Log.d("API_CHECK", "API status: Offline (HTTP ${res.code()})")
                         }
                     } catch (e: Exception) {
                         _serverStatus.value = ServerStatus.OFFLINE
-                        android.util.Log.e("API_CHECK", "API Exception: ${e.message}", e)
+                        android.util.Log.d("API_CHECK", "API check: ${e.message}")
                     }
                 }
-                kotlinx.coroutines.delay(5000)
+                kotlinx.coroutines.delay(10000)
             }
         }
     }

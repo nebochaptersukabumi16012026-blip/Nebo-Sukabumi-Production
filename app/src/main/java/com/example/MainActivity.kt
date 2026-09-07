@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -124,6 +126,21 @@ fun MainScreen(rootNavController: androidx.navigation.NavController, viewModel: 
 
     var showGuestLogoutDialog by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
+    var showGuestAlert by remember { mutableStateOf(false) }
+
+    if (showGuestAlert) {
+        AlertDialog(
+            onDismissRequest = { showGuestAlert = false },
+            title = { Text("Akses Terbatas", fontWeight = FontWeight.Bold, color = Color.White) },
+            text = { Text("Akun Anda belum diverifikasi oleh pengurus", color = Color.LightGray) },
+            confirmButton = {
+                Button(onClick = { showGuestAlert = false }) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF1E293B)
+        )
+    }
 
     if (showGuestLogoutDialog) {
         AlertDialog(
@@ -233,7 +250,9 @@ fun MainScreen(rootNavController: androidx.navigation.NavController, viewModel: 
                                 indicatorColor = androidx.compose.ui.graphics.Color(0xFF2196F3).copy(alpha = 0.2f)
                             ),
                             onClick = {
-                                if (route == "logout_guest") {
+                                if (userRole == "GUEST" && (route == "uang_kas" || route == "laporan")) {
+                                    showGuestAlert = true
+                                } else if (route == "logout_guest") {
                                     showGuestLogoutDialog = true
                                 } else if (currentDestination?.route != route) {
                                     navController.navigate(route) {
@@ -343,7 +362,7 @@ class MainActivity : ComponentActivity() {
                         )
                     ) { backStackEntry ->
                         val userRole by viewModel.loggedInUserRole.collectAsStateWithLifecycle()
-                        if (userRole != "BENDAHARA" && userRole != "ADMIN" && userRole != "DEVELOPER") {
+                        if (userRole != "ADMIN" && userRole != "DEVELOPER") {
                             LaunchedEffect(Unit) {
                                 navController.navigate("main") {
                                     popUpTo("main") { inclusive = true }
@@ -604,14 +623,30 @@ class MainActivity : ComponentActivity() {
 
                     composable("detail_sisa_cicilan") {
                         val userRole by viewModel.loggedInUserRole.collectAsStateWithLifecycle()
-                        if (userRole == "GUEST" || userRole == "ANGGOTA") {
+                        if (userRole == "GUEST") {
                             LaunchedEffect(Unit) {
                                 navController.navigate("main") {
                                     popUpTo("main") { inclusive = true }
                                 }
                             }
                         } else {
-                            DetailSisaCicilanScreen(
+                            DaftarCicilanAnggotaScreen(
+                                navController = navController,
+                                viewModel = viewModel
+                            )
+                        }
+                    }
+
+                    composable("daftar_cicilan_anggota") {
+                        val userRole by viewModel.loggedInUserRole.collectAsStateWithLifecycle()
+                        if (userRole == "GUEST") {
+                            LaunchedEffect(Unit) {
+                                navController.navigate("main") {
+                                    popUpTo("main") { inclusive = true }
+                                }
+                            }
+                        } else {
+                            DaftarCicilanAnggotaScreen(
                                 navController = navController,
                                 viewModel = viewModel
                             )
