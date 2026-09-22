@@ -50,10 +50,24 @@ try {
     if ($user) {
         $db_password = isset($user['password']) ? $user['password'] : '';
         
-        // 3. Dukungan verifikasi password ganda (plain text & password_verify)
-        $is_password_valid = password_verify($password, $db_password) || ($password === $db_password);
+        // Verifikasi password Bcrypt atau backward compatibility untuk plain text
+        $is_password_valid = password_verify($password, $db_password);
+        $needs_rehash = false;
+
+        if (!$is_password_valid && $password === $db_password) {
+            $is_password_valid = true;
+            $needs_rehash = true;
+        }
 
         if ($is_password_valid) {
+            // Otomatis upgrade plain-text lama ke Bcrypt hash
+            if ($needs_rehash) {
+                $newHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+                $table_to_update = (!empty($user['nama']) || !empty($user['nra'])) ? 'anggota' : 'users';
+                $stmt_up = $conn->prepare("UPDATE {$table_to_update} SET password = :newpass WHERE id = :uid");
+                $stmt_up->execute([':newpass' => $newHash, ':uid' => $user['id']]);
+            }
+
             $require_new_password = false;
             $request_id = 0;
             $nra_to_check = !empty($user['nra']) ? $user['nra'] : (isset($user['username']) ? $user['username'] : $usernameInput);
@@ -115,11 +129,12 @@ try {
         ]);
     }
 } catch (PDOException $e) {
+    error_log("Database error in login.php: " . $e->getMessage());
     http_response_code(500);
     echo json_encode([
         'status' => 'error',
         'success' => false,
-        'message' => 'Database error: ' . $e->getMessage()
+        'message' => 'Terjadi kendala pada server database.'
     ]);
 }
 ?>

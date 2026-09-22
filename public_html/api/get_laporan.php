@@ -43,11 +43,22 @@ if ($method == 'GET') {
 
         $kas_utama_saldo = max(0, $kas_utama_in - $kas_utama_out);
 
-        // 2. KAS KELILING
-        $stmt_master_kk = $conn->query("SELECT total_akumulasi_masuk, total_akumulasi_keluar FROM saldo_akumulasi WHERE jenis_kas = 'kas_keliling'");
-        $row_master_kk = $stmt_master_kk ? $stmt_master_kk->fetch(PDO::FETCH_ASSOC) : null;
-        $kk_in = $row_master_kk ? floatval($row_master_kk['total_akumulasi_masuk']) : 0.0;
-        $kk_out = $row_master_kk ? floatval($row_master_kk['total_akumulasi_keluar']) : 0.0;
+        // 2. KAS KELILING (SINKRONISASI GLOBAL DENGAN TABEL KAS_KELILING)
+        $col_amount_kk = "nominal";
+        try {
+            $checkColKk = $conn->query("SHOW COLUMNS FROM kas_keliling LIKE 'jumlah'");
+            if ($checkColKk && $checkColKk->rowCount() > 0) {
+                $col_amount_kk = "jumlah";
+            }
+        } catch (Exception $e) {
+            $col_amount_kk = "nominal";
+        }
+
+        $stmt_kk_in = $conn->query("SELECT COALESCE(SUM({$col_amount_kk}), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pemasukan' OR LOWER(jenis_transaksi) = 'pemasukan' OR (COALESCE(jenis, '') = '' AND COALESCE(jenis_transaksi, '') = '')");
+        $kk_in = floatval($stmt_kk_in ? $stmt_kk_in->fetch(PDO::FETCH_ASSOC)['total'] : 0);
+
+        $stmt_kk_out = $conn->query("SELECT COALESCE(SUM({$col_amount_kk}), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pengeluaran' OR LOWER(jenis_transaksi) = 'pengeluaran'");
+        $kk_out = floatval($stmt_kk_out ? $stmt_kk_out->fetch(PDO::FETCH_ASSOC)['total'] : 0);
 
         $kk_saldo = max(0, $kk_in - $kk_out);
 

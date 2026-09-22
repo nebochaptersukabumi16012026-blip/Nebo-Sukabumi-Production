@@ -7,32 +7,33 @@ header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers
 
 date_default_timezone_set('Asia/Jakarta');
 
-// Global error handler for debugging 500 errors
-error_reporting(E_ALL);
+// Global error settings for production security
+error_reporting(0);
 ini_set('display_errors', '0');
+ini_set('log_errors', '1');
 
-function global_error_handler($errno, $errstr, $errfile, $errline) {
-    if (!(error_reporting() & $errno)) return;
+function send_json_error($message = "Terjadi kesalahan pada sistem.", $http_code = 500) {
+    if (ob_get_length()) ob_clean();
+    http_response_code($http_code);
     echo json_encode(array(
         "status" => "error",
-        "message" => "PHP Error ($errno): $errstr",
-        "file" => $errfile,
-        "line" => $errline
-    ));
+        "success" => false,
+        "message" => $message
+    ), JSON_UNESCAPED_UNICODE);
     exit();
+}
+
+function global_error_handler($errno, $errstr, $errfile, $errline) {
+    error_log("PHP Error [$errno]: $errstr in $errfile:$errline");
+    return true; // Suppress internal PHP output
 }
 set_error_handler("global_error_handler");
 
 function global_shutdown_handler() {
     $error = error_get_last();
     if ($error !== NULL && in_array($error['type'], array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR))) {
-        if (ob_get_length()) ob_clean();
-        echo json_encode(array(
-            "status" => "error",
-            "message" => "Fatal PHP Error: " . $error['message'],
-            "file" => $error['file'],
-            "line" => $error['line']
-        ));
+        error_log("Fatal PHP Error: {$error['message']} in {$error['file']}:{$error['line']}");
+        send_json_error("Terjadi kesalahan internal pada server.", 500);
     }
 }
 register_shutdown_function("global_shutdown_handler");
@@ -398,7 +399,6 @@ try {
     }
 
 } catch(Throwable $exception) {
-    if (ob_get_length()) ob_clean();
-    echo json_encode(array("status" => "error", "message" => "Database initialization failed: " . $exception->getMessage(), "file" => $exception->getFile(), "line" => $exception->getLine()));
-    exit();
+    error_log("Database initialization failed: " . $exception->getMessage() . " in " . $exception->getFile() . ":" . $exception->getLine());
+    send_json_error("Gagal terhubung ke basis data server.", 500);
 }
