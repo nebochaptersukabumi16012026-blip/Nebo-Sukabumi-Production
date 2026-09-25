@@ -98,7 +98,11 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
         if (userRole?.equals("GUEST", ignoreCase = true) == true) {
             showGuestAlert = true
         } else {
-            navController.navigate(route)
+            try {
+                navController.navigate(route)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -443,6 +447,8 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
             item {
                 ServerStatusCard(status = serverStatus, lastSyncTime = lastSyncTime)
             }
+
+
             
             item {
                 val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -453,6 +459,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                             isSyncing = true
                             try {
                                 viewModel.syncFromApiSuspend()
+                                (context as? com.example.MainActivity)?.fetchDaftarAnggota()
                                 Toast.makeText(context, "Sinkronisasi data berhasil", Toast.LENGTH_SHORT).show()
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Gagal sinkronisasi: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -901,6 +908,129 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                     color = Color(0xFFFFEDD5)
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // ========================================================
+            // 2.5 CARD DAFTAR ANGGOTA NEBO SUKABUMI (Di bawah Laporan Kas)
+            // ========================================================
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .testTag("card_daftar_anggota")
+                        .clickable { navController.navigate("anggota_list") },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(Color(0xFF2563EB).copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.People,
+                                        contentDescription = "Anggota",
+                                        tint = Color(0xFF60A5FA),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "DAFTAR ANGGOTA NEBO SUKABUMI",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        ),
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "Sumber: nebosukabumi.net/api/get_anggota.php",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color.LightGray.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF065F46)
+                            ) {
+                                Text(
+                                    text = "VERIFIED",
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF34D399)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = Color.White.copy(alpha = 0.1f)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Total Anggota Terverifikasi",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = "${anggotaList.count { it.statusAktif == 1 }} Orang",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 18.sp
+                                ),
+                                color = Color(0xFF60A5FA)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Button(
+                            onClick = { navController.navigate("anggota_list") },
+                            modifier = Modifier.fillMaxWidth().testTag("btn_lihat_semua_anggota"),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Lihat Semua Anggota",
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

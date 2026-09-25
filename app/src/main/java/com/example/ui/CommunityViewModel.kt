@@ -128,6 +128,10 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun updateRekapitulasiCicilan(totalHarga: Double, anggotaMencicil: Int, totalSisa: Double) {
+        repository.updateRekapitulasiCicilan(totalHarga, anggotaMencicil, totalSisa)
+    }
+
     private val _isDarkMode = MutableStateFlow(true)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
@@ -370,10 +374,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
                         android.util.Log.e("FirestoreListener", "Snapshot listen failed: ${error.message}")
-                        return@addSnapshotListener
-                    }
-
-                    if (snapshot != null && snapshot.exists()) {
+                    } else if (snapshot != null && snapshot.exists()) {
                         android.util.Log.d("FirestoreListener", "Snapshot updated: ${snapshot.data}")
                         applyFirestoreSnapshot(snapshot)
                     } else {
@@ -396,9 +397,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     android.util.Log.e("FirestoreListener", "Anggota listen failed: ${error.message}")
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
+                } else if (snapshot != null) {
                     viewModelScope.launch {
                         val firestoreList = snapshot.documents.mapNotNull { doc ->
                             try {
@@ -482,9 +481,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     android.util.Log.e("FirestoreListener", "Pembayaran listen failed: ${error.message}")
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
+                } else if (snapshot != null) {
                     viewModelScope.launch {
                         val firestoreList = snapshot.documents.mapNotNull { doc ->
                             try {
@@ -546,9 +543,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     android.util.Log.e("FirestoreListener", "Pengeluaran listen failed: ${error.message}")
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
+                } else if (snapshot != null) {
                     viewModelScope.launch {
                         val firestoreList = snapshot.documents.mapNotNull { doc ->
                             try {
@@ -608,9 +603,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     android.util.Log.e("FirestoreListener", "KasKeliling listen failed: ${error.message}")
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
+                } else if (snapshot != null) {
                     viewModelScope.launch {
                         val firestoreList = snapshot.documents.mapNotNull { doc ->
                             try {
@@ -3051,6 +3044,10 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         repository.setAllPembayaran(pembayaranList)
         repository.setAllPengeluaran(pengeluaranList)
         repository.setAllKasKeliling(kasKelilingList)
+    }
+
+    fun setAllAnggota(list: List<com.example.data.Anggota>) {
+        repository.setAllAnggota(list)
     }
 
     fun submitResetRequest(nra: String, onResult: (Boolean, String) -> Unit) {

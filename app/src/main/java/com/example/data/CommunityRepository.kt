@@ -44,6 +44,15 @@ class CommunityRepository(
         _syncError.value = null
     }
 
+    fun updateRekapitulasiCicilan(totalHarga: Double, anggotaMencicil: Int, totalSisa: Double) {
+        val current = _dashboardData.value ?: DashboardData()
+        _dashboardData.value = current.copy(
+            total_harga_barang = totalHarga,
+            anggota_mencicil = anggotaMencicil,
+            total_sisa_cicilan = totalSisa
+        )
+    }
+
     // --- SYNC API METHODS ---
     suspend fun syncFromApi() {
         _syncError.value = null

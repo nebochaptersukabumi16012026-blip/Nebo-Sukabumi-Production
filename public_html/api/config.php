@@ -12,6 +12,37 @@ error_reporting(0);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
+// HTTPS Enforcement
+if ((!isset($_SERVER['HTTPS']) || strtolower($_SERVER['HTTPS']) !== 'on') &&
+    (!isset($_SERVER['HTTP_X_FORWARDED_PROTO']) || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) !== 'https')) {
+    if (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'localhost') === false && strpos($_SERVER['HTTP_HOST'], '127.0.0.1') === false) {
+        if (!empty($_SERVER['REQUEST_URI'])) {
+            header("Location: https://" . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'], true, 301);
+            exit();
+        }
+    }
+}
+
+function sanitize_text($input) {
+    if (is_null($input)) return '';
+    return htmlspecialchars(strip_tags(trim($input)), ENT_QUOTES, 'UTF-8');
+}
+
+function validate_authorization_header() {
+    $headers = function_exists('getallheaders') ? getallheaders() : [];
+    $authHeader = '';
+    foreach ($headers as $key => $val) {
+        if (strtolower($key) === 'authorization') {
+            $authHeader = trim($val);
+            break;
+        }
+    }
+    if (empty($authHeader) && isset($_SERVER['HTTP_AUTHORIZATION'])) {
+        $authHeader = trim($_SERVER['HTTP_AUTHORIZATION']);
+    }
+    return $authHeader;
+}
+
 function send_json_error($message = "Terjadi kesalahan pada sistem.", $http_code = 500) {
     if (ob_get_length()) ob_clean();
     http_response_code($http_code);

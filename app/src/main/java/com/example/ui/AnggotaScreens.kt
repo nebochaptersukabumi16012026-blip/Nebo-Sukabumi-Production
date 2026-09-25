@@ -211,7 +211,12 @@ private fun formatRupiahNoDecimal(number: Double): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewModel, memberId: Int) {
+fun AnggotaDetailScreen(
+    navController: NavController,
+    viewModel: CommunityViewModel,
+    memberId: Int,
+    canViewCicilanOverride: Boolean? = null
+) {
     val anggotaFlow = viewModel.getAnggotaById(memberId).collectAsState(initial = null)
     val anggota = anggotaFlow.value
 
@@ -224,6 +229,7 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
 
     val userRole by viewModel.loggedInUserRole.collectAsState()
     val loggedInUserId by viewModel.loggedInUserId.collectAsState()
+    val loggedInUserNra by viewModel.loggedInUserNra.collectAsState()
     val context = LocalContext.current
     var selectedImage by remember { mutableStateOf<String?>(null) }
     var paymentToDelete by remember { mutableStateOf<Pembayaran?>(null) }
@@ -256,7 +262,21 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
     val canManageFinance = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER"))
     val canInputKasAniv = canManageFinance
     val canDeleteTransaction = canManageFinance
-    val isOwnProfile = loggedInUserId == anggota.id
+
+    val loggedInNra = (loggedInUserNra ?: SessionManager.getUserNra(context)).trim()
+    val targetNra = anggota.nra.trim()
+    val targetId = anggota.id
+    val activeRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase()
+
+    // Aturan Hak Akses (Privasi Data Cicilan):
+    // 1. Jika melihat detail profil diri sendiri (ID/NRA login == ID/NRA target) -> BOLEH
+    // 2. Jika user login adalah ADMIN, BENDAHARA, atau PENGURUS/DEVELOPER -> BOLEH
+    // 3. Jika MEMBER/GUEST melihat detail anggota lain -> SEMBUNYIKAN (GONE)
+    val isOwnProfile = (loggedInNra.isNotBlank() && targetNra.isNotBlank() && loggedInNra.equals(targetNra, ignoreCase = true)) ||
+        (loggedInUserId != null && loggedInUserId != -1 && loggedInUserId == targetId)
+    val isManagement = activeRole in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")
+    val canViewCicilan = canViewCicilanOverride ?: (isOwnProfile || isManagement)
+
     val isGuest = userRole?.uppercase() == "GUEST"
 
     // Dynamic extraction of all payments belonging to this specific member (by ID or Name)
@@ -773,13 +793,14 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                     }
                 }
 
-                // 4. DATA CICILAN CARD & RIWAYAT (Full Read Access untuk ANGGOTA & GUEST)
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                    ) {
+                // 4. DATA CICILAN CARD & RIWAYAT (Diproteksi Privasi: Hanya Pemilik Profil & Pengurus/Admin)
+                if (canViewCicilan) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
+                        ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 if (isOwnProfile) "CICILAN SAYA" else "DATA CICILAN",
@@ -920,6 +941,7 @@ fun AnggotaDetailScreen(navController: NavController, viewModel: CommunityViewMo
                             }
                         }
                     }
+                }
             }
 
             selectedImage?.let { image ->
