@@ -342,9 +342,20 @@ try {
 
     // Check for camelCase columns from database.sql and sync if necessary for anggota
     try {
-        $pdo->exec("UPDATE anggota SET uang_kas = uangKas WHERE uang_kas = 0 AND uangKas > 0");
-        $pdo->exec("UPDATE anggota SET iuran_aniv = iuranAniv WHERE iuran_aniv = 0 AND iuranAniv > 0");
-        $pdo->exec("UPDATE anggota SET sisa_cicilan = sisaCicilan WHERE sisa_cicilan = 0 AND sisaCicilan > 0");
+        $pdo->exec("UPDATE anggota SET uang_kas = uangKas WHERE (uang_kas IS NULL OR uang_kas = 0) AND uangKas > 0");
+        $pdo->exec("UPDATE anggota SET uangKas = uang_kas WHERE (uangKas IS NULL OR uangKas = 0) AND uang_kas > 0");
+        $pdo->exec("UPDATE anggota SET iuran_aniv = iuranAniv WHERE (iuran_aniv IS NULL OR iuran_aniv = 0) AND iuranAniv > 0");
+        $pdo->exec("UPDATE anggota SET iuranAniv = iuran_aniv WHERE (iuranAniv IS NULL OR iuranAniv = 0) AND iuran_aniv > 0");
+        $pdo->exec("UPDATE anggota SET harga_barang = hargaBarang WHERE (harga_barang IS NULL OR harga_barang = 0) AND hargaBarang > 0");
+        $pdo->exec("UPDATE anggota SET hargaBarang = harga_barang WHERE (hargaBarang IS NULL OR hargaBarang = 0) AND harga_barang > 0");
+        $pdo->exec("UPDATE anggota SET sisa_cicilan = sisaCicilan WHERE (sisa_cicilan IS NULL OR sisa_cicilan = 0) AND sisaCicilan > 0");
+        $pdo->exec("UPDATE anggota SET sisaCicilan = sisa_cicilan WHERE (sisaCicilan IS NULL OR sisaCicilan = 0) AND sisa_cicilan > 0");
+        $pdo->exec("UPDATE anggota SET total_cicilan = totalCicilan WHERE (total_cicilan IS NULL OR total_cicilan = 0) AND totalCicilan > 0");
+        $pdo->exec("UPDATE anggota SET totalCicilan = total_cicilan WHERE (totalCicilan IS NULL OR totalCicilan = 0) AND total_cicilan > 0");
+        $pdo->exec("UPDATE anggota SET lamaCicilan = lama_cicilan WHERE (lamaCicilan IS NULL OR lamaCicilan = 0) AND lama_cicilan > 0");
+        $pdo->exec("UPDATE anggota SET lama_cicilan = lamaCicilan WHERE (lama_cicilan IS NULL OR lama_cicilan = 0) AND lamaCicilan > 0");
+        $pdo->exec("UPDATE anggota SET nama_barang = namaBarang WHERE (nama_barang IS NULL OR nama_barang = '') AND namaBarang IS NOT NULL AND namaBarang != ''");
+        $pdo->exec("UPDATE anggota SET namaBarang = nama_barang WHERE (namaBarang IS NULL OR namaBarang = '') AND nama_barang IS NOT NULL AND nama_barang != ''");
     } catch (Exception $e) {}
 
     // Initial Master Ledger Seeding if empty

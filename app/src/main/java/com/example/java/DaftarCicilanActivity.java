@@ -113,7 +113,11 @@ public class DaftarCicilanActivity extends AppCompatActivity {
         if (userRole == null || userRole.trim().isEmpty()) {
             userRole = "MEMBER";
         }
-        String userNra = SessionManager.INSTANCE.getNra(this);
+        userRole = userRole.toUpperCase(Locale.ROOT);
+        String userNra = SessionManager.INSTANCE.getUserNra(this);
+        if (userNra == null || userNra.trim().isEmpty()) {
+            userNra = SessionManager.INSTANCE.getNra(this);
+        }
         if (userNra == null || userNra.trim().isEmpty()) {
             userNra = "0001";
         }

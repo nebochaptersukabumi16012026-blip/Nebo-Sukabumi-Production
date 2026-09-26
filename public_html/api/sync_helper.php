@@ -75,7 +75,7 @@ function recalculateAnggotaCicilan($conn, $anggota_id) {
 
         $new_total = max($total_cic, $total_pem);
         
-        $stmt_harga = $conn->prepare("SELECT harga_barang FROM anggota WHERE id = ?");
+        $stmt_harga = $conn->prepare("SELECT COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) as harga_barang FROM anggota WHERE id = ?");
         $stmt_harga->execute(array($anggota_id));
         $harga_row = $stmt_harga->fetch(PDO::FETCH_ASSOC);
         $harga_barang = floatval(isset($harga_row['harga_barang']) ? $harga_row['harga_barang'] : 0);
@@ -83,6 +83,11 @@ function recalculateAnggotaCicilan($conn, $anggota_id) {
         
         $stmt_update = $conn->prepare("UPDATE anggota SET total_cicilan = ?, sisa_cicilan = ? WHERE id = ?");
         $stmt_update->execute(array($new_total, $sisa_cicilan, $anggota_id));
+
+        try {
+            $stmt_camel = $conn->prepare("UPDATE anggota SET sisaCicilan = ?, hargaBarang = ?, totalCicilan = ? WHERE id = ?");
+            $stmt_camel->execute(array($sisa_cicilan, $harga_barang, $new_total, $anggota_id));
+        } catch (Exception $e) {}
     } catch (Exception $e) {
         error_log("ERROR_SINKRONISASI_CICILAN: " . $e->getMessage());
     }

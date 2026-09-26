@@ -12,19 +12,19 @@ public class CicilanAnggota {
     @SerializedName("nra")
     private String nra = "";
 
-    @SerializedName("harga_barang")
+    @SerializedName(value = "harga_barang", alternate = {"hargaBarang", "harga"})
     private double harga_barang = 0.0;
 
-    @SerializedName("total_dibayar")
+    @SerializedName(value = "total_dibayar", alternate = {"totalDibayar", "dibayar"})
     private double total_dibayar = 0.0;
 
-    @SerializedName("sudah_dibayar")
+    @SerializedName(value = "sudah_dibayar", alternate = {"sudahDibayar"})
     private double sudah_dibayar = 0.0;
 
-    @SerializedName("sisa_cicilan")
+    @SerializedName(value = "sisa_cicilan", alternate = {"sisaCicilan", "sisa"})
     private double sisa_cicilan = 0.0;
 
-    @SerializedName("cicilan_per_bulan")
+    @SerializedName(value = "cicilan_per_bulan", alternate = {"cicilanPerBulan"})
     private double cicilan_per_bulan = 0.0;
 
     public CicilanAnggota() {

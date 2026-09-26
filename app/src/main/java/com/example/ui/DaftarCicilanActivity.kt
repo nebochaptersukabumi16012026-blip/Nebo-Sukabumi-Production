@@ -87,8 +87,9 @@ class DaftarCicilanActivity : AppCompatActivity() {
      */
     fun loadData() {
         // 1. Ambil data user yang sedang login dari SessionManager
-        val userRole = SessionManager.getRole(this).ifBlank { "MEMBER" }
-        val userNra = SessionManager.getNra(this).ifBlank { "0001" }
+        val rawRole = SessionManager.getRole(this).ifBlank { "MEMBER" }
+        val userRole = rawRole.uppercase(Locale.ROOT)
+        val userNra = SessionManager.getUserNra(this).ifBlank { SessionManager.getNra(this).ifBlank { "0001" } }
 
         // 2. Format URL API dengan query parameter
         val encodedRole = URLEncoder.encode(userRole, "UTF-8")

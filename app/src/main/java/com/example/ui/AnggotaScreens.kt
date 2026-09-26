@@ -1144,7 +1144,7 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
                         statusAktif = statusAktif,
                         foto = fotoUri?.toString(),
                         hargaBarang = hargaBarangVal,
-                        totalCicilan = hargaBarangVal,
+                        totalCicilan = totalPaid,
                         sisaCicilan = sisaCicilanVal,
                         lamaCicilan = lamaCicilanVal,
                         cicilanPerBulan = cicilanPerBulanVal,

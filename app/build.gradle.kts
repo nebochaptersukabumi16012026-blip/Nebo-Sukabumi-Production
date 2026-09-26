@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.moshi.kotlin)
     implementation(libs.gson)
     implementation(libs.volley)
+    implementation(libs.androidx.browser)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

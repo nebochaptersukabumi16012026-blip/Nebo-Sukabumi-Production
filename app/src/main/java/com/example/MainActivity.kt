@@ -44,6 +44,9 @@ class MainActivity : ComponentActivity() {
             fetchRekapitulasiCicilanBarang(role = activeRole, nra = activeNra)
         }
 
+        // Auto-refresh session status verifikasi akun & role terbaru dari cPanel saat startup
+        autoRefreshSession()
+
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -238,17 +241,59 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val memberList = mutableListOf<com.example.data.Anggota>()
+                    val currentNra = SessionManager.getUserNra(this@MainActivity).trim()
+                    val currentUserId = SessionManager.getUserId(this@MainActivity)
+                    val currentUserName = SessionManager.getUserName(this@MainActivity).trim()
+
                     for (i in 0 until jsonArray.length()) {
                         val obj = jsonArray.getJSONObject(i)
                         val id = obj.optInt("id", 0)
                         val nama = obj.optString("nama", "Anggota")
                         val nra = obj.optString("nra", "-")
-                        val role = obj.optString("role", "MEMBER")
-                        val statusStr = obj.optString("status", "VERIFIED")
-                        val uangKas = obj.optDouble("uang_kas", 0.0)
-                        val iuranAniv = obj.optDouble("iuran_aniv", 0.0)
-                        val sisaCicilan = obj.optDouble("sisa_cicilan", 0.0)
-                        val statusAktif = if (statusStr.equals("VERIFIED", ignoreCase = true) || statusStr.equals("Aktif", ignoreCase = true)) 1 else 0
+                        val role = obj.optString("role", "MEMBER").trim()
+                        val statusStr = obj.optString("status", "").trim()
+                        val statusVerifStr = obj.optString("status_verifikasi", "").trim()
+                        val uangKas = obj.optDouble("uang_kas", obj.optDouble("uangKas", 0.0))
+                        val iuranAniv = obj.optDouble("iuran_aniv", obj.optDouble("iuranAniv", 0.0))
+                        val hargaBarang = obj.optDouble("harga_barang", obj.optDouble("hargaBarang", 0.0))
+                        val totalCicilan = obj.optDouble("total_cicilan", obj.optDouble("totalCicilan", 0.0))
+                        val sisaCicilan = obj.optDouble("sisa_cicilan", obj.optDouble("sisaCicilan", 0.0))
+                        val cicilanPerBulan = obj.optDouble("cicilan_per_bulan", obj.optDouble("cicilanPerBulan", 0.0))
+                        val lamaCicilan = obj.optInt("lamaCicilan", obj.optInt("lama_cicilan", 0))
+                        val totalTagihan = obj.optDouble("totalTagihan", obj.optDouble("total_tagihan", hargaBarang))
+                        
+                        // 1. Parsing status verifikasi (status_verifikasi / status == "1" atau VERIFIED) dan role
+                        val roleUpper = role.uppercase()
+                        val isItemVerified = statusVerifStr == "1" ||
+                                statusStr == "1" ||
+                                statusStr.equals("VERIFIED", ignoreCase = true) ||
+                                statusStr.equals("Aktif", ignoreCase = true) ||
+                                obj.optInt("status_verifikasi", -1) == 1 ||
+                                obj.optInt("status", -1) == 1 ||
+                                obj.optBoolean("is_verified", false) ||
+                                roleUpper in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")
+
+                        val statusVerifikasiStr = if (isItemVerified) "1" else "0"
+                        val statusAktif = if (isItemVerified) 1 else 0
+
+                        // Update SessionManager jika item ini adalah user yang sedang login
+                        val isCurrentUser = (currentUserId != -1 && currentUserId == id) ||
+                                (currentNra.isNotEmpty() && (currentNra.equals(nra.trim(), ignoreCase = true) || currentNra.toIntOrNull() == nra.trim().toIntOrNull())) ||
+                                (currentUserName.isNotEmpty() && currentUserName.equals(nama.trim(), ignoreCase = true))
+
+                        if (isCurrentUser) {
+                            val latestRole = if (roleUpper.isNotBlank()) roleUpper else "MEMBER"
+                            SessionManager.updateRoleAndVerification(
+                                context = this@MainActivity,
+                                role = latestRole,
+                                isVerified = isItemVerified,
+                                statusVerifikasi = statusVerifikasiStr
+                            )
+                            withContext(Dispatchers.Main) {
+                                viewModel.setLoggedInUserRole(latestRole)
+                                viewModel.setUserVerified(isItemVerified)
+                            }
+                        }
 
                         memberList.add(
                             com.example.data.Anggota(
@@ -259,7 +304,12 @@ class MainActivity : ComponentActivity() {
                                 statusAktif = statusAktif,
                                 uangKas = uangKas,
                                 iuranAniv = iuranAniv,
-                                sisaCicilan = sisaCicilan
+                                hargaBarang = hargaBarang,
+                                totalCicilan = totalCicilan,
+                                sisaCicilan = sisaCicilan,
+                                cicilanPerBulan = cicilanPerBulan,
+                                lamaCicilan = lamaCicilan,
+                                totalTagihan = totalTagihan
                             )
                         )
                     }
@@ -436,12 +486,219 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * Memanggil API backend cPanel get_dashboard.php / dashboard.php
+     * untuk membaca status verifikasi (status_verifikasi / status == "1" atau "VERIFIED")
+     * serta role user terbaru dan memperbarui SessionManager.
+     */
+    fun fetchDashboardUserSession(onComplete: ((isVerified: Boolean, role: String) -> Unit)? = null) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val currentRole = SessionManager.getRole(this@MainActivity).ifBlank { "MEMBER" }
+                val currentNra = SessionManager.getUserNra(this@MainActivity).ifBlank { "0001" }
+                val urlString = "https://nebosukabumi.net/api/get_dashboard.php?role=" +
+                        java.net.URLEncoder.encode(currentRole, "UTF-8") +
+                        "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8")
+
+                var jsonString = ""
+                try {
+                    val url = URL(urlString)
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 8000
+                        readTimeout = 8000
+                        setRequestProperty("Accept", "application/json")
+                    }
+                    if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                        val sb = StringBuilder()
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            sb.append(line)
+                        }
+                        reader.close()
+                        jsonString = sb.toString().trim()
+                    }
+                } catch (e: Exception) {
+                    // Fallback ke dashboard.php jika routing get_dashboard.php diarahkan ke dashboard.php
+                    try {
+                        val fallbackUrl = URL("https://nebosukabumi.net/api/dashboard.php?role=" +
+                                java.net.URLEncoder.encode(currentRole, "UTF-8") +
+                                "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8"))
+                        val conn = (fallbackUrl.openConnection() as HttpURLConnection).apply {
+                            requestMethod = "GET"
+                            connectTimeout = 8000
+                            readTimeout = 8000
+                            setRequestProperty("Accept", "application/json")
+                        }
+                        if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                            val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                            val sb = StringBuilder()
+                            var line: String?
+                            while (reader.readLine().also { line = it } != null) {
+                                sb.append(line)
+                            }
+                            reader.close()
+                            jsonString = sb.toString().trim()
+                        }
+                    } catch (ex: Exception) {
+                        ex.printStackTrace()
+                    }
+                }
+
+                if (jsonString.startsWith("{")) {
+                    val root = JSONObject(jsonString)
+                    val userObj = root.optJSONObject("user")
+                        ?: root.optJSONObject("data")?.optJSONObject("user")
+                        ?: root.optJSONObject("data")?.optJSONObject("profile")
+                        ?: root.optJSONObject("profile")
+                        ?: root.optJSONObject("data")
+                        ?: root
+
+                    val statusVerifStr = when {
+                        userObj.has("status_verifikasi") -> userObj.optString("status_verifikasi")
+                        root.has("status_verifikasi") -> root.optString("status_verifikasi")
+                        else -> ""
+                    }.trim()
+
+                    val statusStr = when {
+                        userObj.has("status") -> userObj.optString("status")
+                        root.has("status") -> root.optString("status")
+                        else -> ""
+                    }.trim()
+
+                    val roleStr = when {
+                        userObj.has("role") -> userObj.optString("role")
+                        root.has("role") -> root.optString("role")
+                        else -> currentRole
+                    }.trim().uppercase()
+
+                    // 1. Parsing status verifikasi: status_verifikasi == "1" ATAU status == "1" / "VERIFIED" / "Aktif"
+                    val isVerified = statusVerifStr == "1" ||
+                            statusStr == "1" ||
+                            statusStr.equals("VERIFIED", ignoreCase = true) ||
+                            statusStr.equals("Aktif", ignoreCase = true) ||
+                            userObj.optInt("status_verifikasi", -1) == 1 ||
+                            userObj.optInt("status", -1) == 1 ||
+                            userObj.optBoolean("is_verified", false) ||
+                            roleStr in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")
+
+                    val statusVerifikasiStr = if (isVerified) "1" else "0"
+                    val finalRole = if (roleStr.isNotBlank()) roleStr else currentRole.uppercase()
+
+                    // Simpan status dan role terbaru tersebut ke SessionManager / SharedPreferences
+                    SessionManager.updateRoleAndVerification(
+                        context = this@MainActivity,
+                        role = finalRole,
+                        isVerified = isVerified,
+                        statusVerifikasi = statusVerifikasiStr
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        viewModel.setLoggedInUserRole(finalRole)
+                        viewModel.setUserVerified(isVerified)
+                        onComplete?.invoke(isVerified, finalRole)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
+     * Auto-refresh session saat tombol dialog OK ditekan atau saat pengguna melakukan Swipe Refresh pada Dashboard.
+     * Mengambil status verifikasi dan role terbaru dari API cPanel (get_dashboard.php dan get_anggota.php).
+     */
+    fun autoRefreshSession(onComplete: (() -> Unit)? = null) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // 1. Refresh session dari get_dashboard.php
+                fetchDashboardUserSession()
+                // 2. Refresh session & daftar anggota dari get_anggota.php
+                fetchDaftarAnggota()
+                // 3. Sinkronisasi data ke ViewModel
+                viewModel.syncFromApiSuspend()
+
+                val activeRole = SessionManager.getRole(this@MainActivity).let { if (it.isBlank()) "BENDAHARA" else it }.uppercase()
+                val activeNra = SessionManager.getUserNra(this@MainActivity).let { if (it.isBlank()) "0001" else it }
+                if (activeRole in listOf("BENDAHARA", "ADMIN", "DEVELOPER")) {
+                    fetchRekapitulasiCicilanBarang(role = activeRole, nra = activeNra)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                withContext(Dispatchers.Main) {
+                    onComplete?.invoke()
+                }
+            }
+        }
+    }
+
+    /**
+     * Pengecekan Akses (Akses Terbatas):
+     * - Hanya batasi akses jika userRole == "GUEST" ATAU statusVerifikasi == "0".
+     * - Jika userRole berisi "ADMIN", "BENDAHARA", "PENGURUS", atau "MEMBER" (dengan statusVerifikasi != "0"),
+     *   izinkan akun membuka menu Laporan Kas, Cicilan, dan Daftar Anggota secara penuh.
+     */
+    fun hasAccessToFeatures(): Boolean {
+        val userRole = SessionManager.getRole(this).trim().uppercase()
+        val statusVerifikasi = SessionManager.getStatusVerifikasi(this).trim()
+
+        // Role ADMIN, BENDAHARA, PENGURUS, DEVELOPER selalu memiliki akses penuh
+        if (userRole in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")) {
+            return true
+        }
+
+        // Hanya tampilkan dialog "Akses Terbatas" jika userRole == "GUEST" ATAU statusVerifikasi == "0"
+        if (userRole == "GUEST" || statusVerifikasi == "0") {
+            return false
+        }
+
+        // Jika userRole berisi "MEMBER" atau "ANGGOTA" dan statusVerifikasi != "0", izinkan akses penuh
+        if (userRole in listOf("MEMBER", "ANGGOTA") && statusVerifikasi != "0") {
+            return true
+        }
+
+        return SessionManager.isVerified(this)
+    }
+
+    /**
+     * Menampilkan dialog "Akses Terbatas" jika akun belum diverifikasi.
+     * Mengandung tombol "OK" yang memicu auto-refresh session ke backend cPanel.
+     */
+    fun showAksesTerbatasDialog(onOkPressed: (() -> Unit)? = null) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Akses Terbatas")
+            .setMessage("Akun Anda belum diverifikasi oleh pengurus. Silakan hubungi pengurus atau tunggu hingga akun Anda aktif.")
+            .setPositiveButton("OK") { dialog, _ ->
+                dialog.dismiss()
+                autoRefreshSession {
+                    onOkPressed?.invoke()
+                }
+            }
+            .setCancelable(true)
+            .show()
+    }
+
+    /**
+     * Helper untuk memeriksa hak akses sebelum membuka menu (Laporan Kas, Cicilan, Anggota).
+     */
+    fun checkAksesMenu(onAllowed: () -> Unit) {
+        if (hasAccessToFeatures()) {
+            onAllowed()
+        } else {
+            showAksesTerbatasDialog()
+        }
+    }
+
+    /**
      * Sinkronisasi Real-Time seluruh data CPanel saat tombol Refresh ditekan.
      */
     fun syncAllDataRealtime(onFinished: (() -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 viewModel.syncFromApiSuspend()
+                fetchDashboardUserSession()
                 fetchDaftarAnggota()
 
                 // Cek role aktif user

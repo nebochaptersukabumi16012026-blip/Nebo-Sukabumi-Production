@@ -93,6 +93,17 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     private val _loggedInUserRole = MutableStateFlow<String?>(null)
     val loggedInUserRole: StateFlow<String?> = _loggedInUserRole.asStateFlow()
 
+    fun setLoggedInUserRole(role: String?) {
+        _loggedInUserRole.value = role
+    }
+
+    private val _isUserVerified = MutableStateFlow(true)
+    val isUserVerified: StateFlow<Boolean> = _isUserVerified.asStateFlow()
+
+    fun setUserVerified(verified: Boolean) {
+        _isUserVerified.value = verified
+    }
+
     private val _loggedInUserId = MutableStateFlow<Int?>(null)
     val loggedInUserId: StateFlow<Int?> = _loggedInUserId.asStateFlow()
 
@@ -1484,7 +1495,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                         password = nra, // default password is NRA
                         foto = foto,
                         hargaBarang = hargaBarang,
-                        totalCicilan = hargaBarang,
+                        totalCicilan = totalPaid,
                         sisaCicilan = finalSisaCicilan,
                         lamaCicilan = lamaCicilan,
                         cicilanPerBulan = finalCicilanPerBulan,
@@ -1504,7 +1515,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                             statusAktif = if (statusAktif) 1 else 0,
                             foto = foto,
                             hargaBarang = hargaBarang,
-                            totalCicilan = hargaBarang,
+                            totalCicilan = totalPaid,
                             sisaCicilan = finalSisaCicilan,
                             lamaCicilan = lamaCicilan,
                             cicilanPerBulan = finalCicilanPerBulan,

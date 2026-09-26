@@ -78,15 +78,25 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
         java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("id", "ID")).format(java.util.Date())
     }
 
+    val isUserVerified by viewModel.isUserVerified.collectAsState()
     var showGuestAlert by remember { mutableStateOf(false) }
 
     if (showGuestAlert) {
         AlertDialog(
             onDismissRequest = { showGuestAlert = false },
             title = { Text("Akses Terbatas", fontWeight = FontWeight.Bold, color = Color.White) },
-            text = { Text("Akun Anda belum diverifikasi oleh pengurus", color = Color.LightGray) },
+            text = { Text("Akun Anda belum diverifikasi oleh pengurus. Silakan hubungi pengurus atau tunggu hingga akun Anda aktif.", color = Color.LightGray) },
             confirmButton = {
-                Button(onClick = { showGuestAlert = false }) {
+                Button(
+                    onClick = {
+                        showGuestAlert = false
+                        // Auto-refresh session setelah tombol OK pada dialog ditekan
+                        (context as? com.example.MainActivity)?.autoRefreshSession {
+                            Toast.makeText(context, "Status verifikasi diperbarui", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                ) {
                     Text("OK", color = Color.White)
                 }
             },
@@ -95,7 +105,17 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     }
 
     val onNavigateFinance: (String) -> Unit = { route ->
-        if (userRole?.equals("GUEST", ignoreCase = true) == true) {
+        val currentRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase()
+        val statusVerif = SessionManager.getStatusVerifikasi(context).trim()
+        val isVerified = isUserVerified && SessionManager.isVerified(context)
+
+        // Pengecekan Akses (Akses Terbatas):
+        // - Hanya tampilkan dialog "Akses Terbatas" jika userRole == "GUEST" ATAU statusVerifikasi == "0".
+        // - Jika userRole berisi "ADMIN", "BENDAHARA", "PENGURUS", atau "MEMBER", izinkan akun membuka menu secara penuh.
+        val isRestricted = (currentRole == "GUEST" || statusVerif == "0" || !isVerified) &&
+                currentRole !in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")
+
+        if (isRestricted) {
             showGuestAlert = true
         } else {
             try {
@@ -319,6 +339,41 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                shareLaporanKeuanganWhatsApp(
+                                    context = context,
+                                    kasIn = formatRupiah(grandTotalPemasukanKK),
+                                    kasOut = formatRupiah(grandTotalPengeluaranKK),
+                                    saldoKas = totalKasKelilingSaldoStr,
+                                    totalAniv = totalAnivStr,
+                                    totBarang = formatRupiah(totalHargaBarang),
+                                    totSisa = totalSisaCicilanStr,
+                                    jmlMencicil = anggotaPunyaCicilanCount
+                                )
+                            },
+                            modifier = Modifier.size(36.dp).testTag("btn_toolbar_share_wa")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share Keuangan ke WhatsApp",
+                                tint = Color(0xFF25D366)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { openPdfKeuangan(context) },
+                            modifier = Modifier.size(36.dp).testTag("btn_toolbar_pdf")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PictureAsPdf,
+                                contentDescription = "Buka PDF Keuangan",
+                                tint = Color(0xFFEF4444)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
                         if (userRole == "ADMIN" || userRole == "DEVELOPER") {
                             var showEditHeaderDialog by remember { mutableStateOf(false) }
 
@@ -458,8 +513,8 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         coroutineScope.launch {
                             isSyncing = true
                             try {
-                                viewModel.syncFromApiSuspend()
-                                (context as? com.example.MainActivity)?.fetchDaftarAnggota()
+                                (context as? com.example.MainActivity)?.autoRefreshSession()
+                                (context as? com.example.MainActivity)?.syncAllDataRealtime()
                                 Toast.makeText(context, "Sinkronisasi data berhasil", Toast.LENGTH_SHORT).show()
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Gagal sinkronisasi: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -508,6 +563,71 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                     color = Color.White,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+            }
+
+            // Quick Action Buttons: Share WhatsApp & PDF
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            shareLaporanKeuanganWhatsApp(
+                                context = context,
+                                kasIn = formatRupiah(grandTotalPemasukanKK),
+                                kasOut = formatRupiah(grandTotalPengeluaranKK),
+                                saldoKas = totalKasKelilingSaldoStr,
+                                totalAniv = totalAnivStr,
+                                totBarang = formatRupiah(totalHargaBarang),
+                                totSisa = totalSisaCicilanStr,
+                                jmlMencicil = anggotaPunyaCicilanCount
+                            )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_share_whatsapp_main"),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Share WhatsApp",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = Color.White
+                        )
+                    }
+
+                    Button(
+                        onClick = { openPdfKeuangan(context) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_pdf_keuangan_main"),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "PDF Keuangan",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = Color.White
+                        )
+                    }
+                }
             }
 
             // Card 1: REKAPITULASI KAS KELILING (kas_keliling.php)
@@ -922,7 +1042,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
                         .testTag("card_daftar_anggota")
-                        .clickable { navController.navigate("anggota_list") },
+                        .clickable { onNavigateFinance("anggota_list") },
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
@@ -1016,7 +1136,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Button(
-                            onClick = { navController.navigate("anggota_list") },
+                            onClick = { onNavigateFinance("anggota_list") },
                             modifier = Modifier.fillMaxWidth().testTag("btn_lihat_semua_anggota"),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                             shape = RoundedCornerShape(12.dp)
@@ -1121,7 +1241,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 2.dp)
-                        .clickable { navController.navigate("catatan_bebas") },
+                        .clickable { onNavigateFinance("catatan_bebas") },
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -1728,6 +1848,89 @@ fun ServerStatusCard(status: ServerStatus, lastSyncTime: String) {
                     lineHeight = 18.sp
                 )
             }
+        }
+    }
+}
+
+/**
+ * Membagikan rekapitulasi laporan keuangan total real-time ke WhatsApp.
+ */
+fun shareLaporanKeuanganWhatsApp(
+    context: android.content.Context,
+    kasIn: String,
+    kasOut: String,
+    saldoKas: String,
+    totalAniv: String,
+    totBarang: String,
+    totSisa: String,
+    jmlMencicil: Int
+) {
+    val cleanKasIn = if (kasIn.startsWith("Rp")) kasIn else "Rp $kasIn"
+    val cleanKasOut = if (kasOut.startsWith("Rp")) kasOut else "Rp $kasOut"
+    val cleanSaldoKas = if (saldoKas.startsWith("Rp")) saldoKas else "Rp $saldoKas"
+    val cleanTotalAniv = if (totalAniv.startsWith("Rp")) totalAniv else "Rp $totalAniv"
+    val cleanTotBarang = if (totBarang.startsWith("Rp")) totBarang else "Rp $totBarang"
+    val cleanTotSisa = if (totSisa.startsWith("Rp")) totSisa else "Rp $totSisa"
+
+    val message = """
+📌 *LAPORAN TRANSPARANSI KEUANGAN TOTAL*
+🏎️ *NEBO CHAPTER SUKABUMI*
+
+💵 *1. KAS KELILING*
+• Pemasukan: $cleanKasIn
+• Pengeluaran: $cleanKasOut
+└ 💰 Saldo Kas: *$cleanSaldoKas*
+
+🎉 *2. KAS ANNIVERSARY*
+• Total Terkumpul: *$cleanTotalAniv*
+
+📦 *3. CICILAN BARANG*
+• Total Barang: $cleanTotBarang
+• Sisa Cicilan: *$cleanTotSisa*
+• Jumlah Mencicil: $jmlMencicil Orang
+
+🔗 *Cetak PDF Resmi:*
+https://nebosukabumi.net/api/cetak_pdf_keuangan.php
+""".trimIndent()
+
+    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(android.content.Intent.EXTRA_TEXT, message)
+        setPackage("com.whatsapp")
+    }
+
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        try {
+            val chooser = android.content.Intent.createChooser(
+                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, message)
+                },
+                "Bagikan Laporan Keuangan"
+            )
+            context.startActivity(chooser)
+        } catch (ex: Exception) {
+            Toast.makeText(context, "Aplikasi untuk berbagi tidak ditemukan", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+/**
+ * Membuka URL PDF Keuangan via Custom Chrome Tabs dengan fallback Intent.ACTION_VIEW.
+ */
+fun openPdfKeuangan(context: android.content.Context) {
+    val pdfUrl = "https://nebosukabumi.net/api/cetak_pdf_keuangan.php"
+    try {
+        val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+        customTabsIntent.launchUrl(context, android.net.Uri.parse(pdfUrl))
+    } catch (e: Exception) {
+        try {
+            val browserIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(pdfUrl))
+            context.startActivity(browserIntent)
+        } catch (ex: Exception) {
+            Toast.makeText(context, "Gagal membuka PDF Keuangan", Toast.LENGTH_SHORT).show()
         }
     }
 }

@@ -13,6 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 try {
+    $user_role = isset($_GET['role']) ? strtoupper(trim($_GET['role'])) : '';
+    $user_nra = isset($_GET['nra']) ? trim($_GET['nra']) : '';
+    $isMemberOnly = ($user_role === 'MEMBER' || $user_role === 'ANGGOTA' || $user_role === 'GUEST') && !empty($user_nra);
+
     // Periksa apakah kolom 'harga_barang' dan 'sudah_dibayar' ada di tabel cicilan
     $queryFromCicilanTable = false;
     try {
@@ -30,23 +34,30 @@ try {
     $anggota_mencicil = 0;
 
     if ($queryFromCicilanTable) {
-        // Query persis sesuai spesifikasi jika tabel cicilan menyimpan data master cicilan
+        $whereClause = "(harga_barang - sudah_dibayar) > 0";
+        $params = array();
+        if ($isMemberOnly) {
+            $whereClause .= " AND nra = ?";
+            $params[] = $user_nra;
+        }
+
         $query = "SELECT id, nama, nra, harga_barang, sudah_dibayar, (harga_barang - sudah_dibayar) AS sisa_cicilan, cicilan_per_bulan 
                   FROM cicilan 
-                  WHERE (harga_barang - sudah_dibayar) > 0 
+                  WHERE $whereClause 
                   ORDER BY sisa_cicilan DESC";
-        $stmt = $conn->query($query);
+        $stmt = $conn->prepare($query);
+        $stmt->execute($params);
         $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : array();
 
-        // Query rekapitulasi sesuai instruksi
         $queryRekap = "SELECT 
                           COALESCE(SUM(harga_barang), 0) AS total_harga_barang,
                           COALESCE(SUM(sudah_dibayar), 0) AS total_sudah_dibayar,
                           COALESCE(SUM(harga_barang - sudah_dibayar), 0) AS total_sisa_cicilan,
                           COUNT(DISTINCT nra) AS anggota_mencicil
                        FROM cicilan 
-                       WHERE (harga_barang - sudah_dibayar) > 0";
-        $stmtRekap = $conn->query($queryRekap);
+                       WHERE $whereClause";
+        $stmtRekap = $conn->prepare($queryRekap);
+        $stmtRekap->execute($params);
         if ($stmtRekap && $rowR = $stmtRekap->fetch(PDO::FETCH_ASSOC)) {
             $anggota_mencicil = intval($rowR['anggota_mencicil'] ?? 0);
             if ($anggota_mencicil > 0) {
@@ -57,30 +68,43 @@ try {
         }
     } else {
         // Query dari tabel anggota (master anggota & tagihan cicilan)
-        // total_cicilan di tabel anggota merepresentasikan nominal yang 'sudah_dibayar'
+        // Dukung baik nama kolom snake_case (harga_barang) maupun camelCase (hargaBarang)
+        $whereClause = "(COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0) > 0 
+                         OR COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0)";
+        $params = array();
+        if ($isMemberOnly) {
+            $whereClause .= " AND nra = ?";
+            $params[] = $user_nra;
+        }
+
         $query = "SELECT id, nama, nra, 
-                         COALESCE(harga_barang, 0) AS harga_barang, 
-                         COALESCE(total_cicilan, 0) AS sudah_dibayar, 
+                         COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) AS harga_barang, 
+                         COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0) AS sudah_dibayar, 
                          CASE 
-                             WHEN sisa_cicilan > 0 THEN sisa_cicilan 
-                             ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) 
+                             WHEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0 
+                                  THEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) 
+                             ELSE (COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)) 
                          END AS sisa_cicilan, 
                          COALESCE(cicilan_per_bulan, 0) AS cicilan_per_bulan 
                   FROM anggota 
-                  WHERE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0) > 0 OR COALESCE(sisa_cicilan, 0) > 0)
+                  WHERE $whereClause
                   ORDER BY sisa_cicilan DESC";
-        $stmt = $conn->query($query);
+        $stmt = $conn->prepare($query);
+        $stmt->execute($params);
         $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : array();
 
-        // Rekapitulasi dari tabel anggota HANYA untuk anggota yang MASIH MEMILIKI SISA CICILAN (sisa > 0)
+        // Rekapitulasi dari tabel anggota
         $queryRekap = "SELECT 
-                          COALESCE(SUM(harga_barang), 0) AS total_harga_barang,
-                          COALESCE(SUM(total_cicilan), 0) AS total_sudah_dibayar,
-                          COALESCE(SUM(CASE WHEN sisa_cicilan > 0 THEN sisa_cicilan ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) END), 0) AS total_sisa_cicilan,
+                          COALESCE(SUM(COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0)), 0) AS total_harga_barang,
+                          COALESCE(SUM(COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)), 0) AS total_sudah_dibayar,
+                          COALESCE(SUM(CASE WHEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0 
+                                            THEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) 
+                                            ELSE (COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)) END), 0) AS total_sisa_cicilan,
                           COUNT(DISTINCT nra) AS anggota_mencicil
                        FROM anggota 
-                       WHERE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0) > 0 OR COALESCE(sisa_cicilan, 0) > 0)";
-        $stmtRekap = $conn->query($queryRekap);
+                       WHERE $whereClause";
+        $stmtRekap = $conn->prepare($queryRekap);
+        $stmtRekap->execute($params);
         if ($stmtRekap && $rowR = $stmtRekap->fetch(PDO::FETCH_ASSOC)) {
             $anggota_mencicil = intval($rowR['anggota_mencicil'] ?? 0);
             if ($anggota_mencicil > 0) {
@@ -104,9 +128,13 @@ try {
                 "nama" => isset($row['nama']) ? $row['nama'] : '',
                 "nra" => (!empty($row['nra'])) ? $row['nra'] : '-',
                 "harga_barang" => $hargaBarang,
+                "hargaBarang" => $hargaBarang,
                 "sudah_dibayar" => $sudahDibayar,
+                "total_dibayar" => $sudahDibayar,
                 "sisa_cicilan" => $sisaCicilan,
-                "cicilan_per_bulan" => $cicilanPerBulan
+                "sisaCicilan" => $sisaCicilan,
+                "cicilan_per_bulan" => $cicilanPerBulan,
+                "cicilanPerBulan" => $cicilanPerBulan
             );
         }
     }
@@ -130,13 +158,17 @@ try {
         "message" => "Berhasil mengambil daftar cicilan aktif",
         "total_harga_barang" => $total_harga_barang,
         "total_sudah_dibayar" => $total_sudah_dibayar,
+        "total_dibayar" => $total_sudah_dibayar,
         "total_sisa_cicilan" => $total_sisa_cicilan,
         "anggota_mencicil" => $anggota_mencicil,
+        "total_anggota_mencicil" => $anggota_mencicil,
         "rekapitulasi" => array(
             "total_harga_barang" => $total_harga_barang,
             "total_sudah_dibayar" => $total_sudah_dibayar,
+            "total_dibayar" => $total_sudah_dibayar,
             "total_sisa_cicilan" => $total_sisa_cicilan,
-            "anggota_mencicil" => $anggota_mencicil
+            "anggota_mencicil" => $anggota_mencicil,
+            "total_anggota_mencicil" => $anggota_mencicil
         ),
         "data" => $data,
         "total" => count($data)

@@ -8,16 +8,16 @@ public class CicilanResponse {
     @SerializedName("status")
     private String status = "";
 
-    @SerializedName("total_sisa_cicilan")
+    @SerializedName(value = "total_sisa_cicilan", alternate = {"totalSisaCicilan", "sisa_cicilan"})
     private double total_sisa_cicilan = 0.0;
 
-    @SerializedName("total_harga_barang")
+    @SerializedName(value = "total_harga_barang", alternate = {"totalHargaBarang", "harga_barang"})
     private double total_harga_barang = 0.0;
 
-    @SerializedName("total_dibayar")
+    @SerializedName(value = "total_dibayar", alternate = {"total_sudah_dibayar", "sudah_dibayar", "totalDibayar"})
     private double total_dibayar = 0.0;
 
-    @SerializedName("total_anggota_mencicil")
+    @SerializedName(value = "total_anggota_mencicil", alternate = {"anggota_mencicil", "total_anggota", "total"})
     private int total_anggota_mencicil = 0;
 
     @SerializedName("data")

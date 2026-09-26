@@ -21,6 +21,7 @@ coil = "2.7.0"
 firebaseBom = "33.7.0"
 gson = "2.10.1"
 volley = "1.2.1"
+browser = "1.8.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -59,6 +60,7 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 moshi-kotlin = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
+androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

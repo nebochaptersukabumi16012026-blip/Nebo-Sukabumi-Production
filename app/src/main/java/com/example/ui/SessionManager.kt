@@ -13,6 +13,7 @@ object SessionManager {
     private const val KEY_USER_NRA = "session_user_nra"
     private const val KEY_AUTH_TOKEN = "session_auth_token"
     private const val KEY_IS_VERIFIED = "session_is_verified"
+    private const val KEY_STATUS_VERIFIKASI = "session_status_verifikasi"
 
     @Volatile
     private var cachedRole: String? = null
@@ -40,9 +41,11 @@ object SessionManager {
         userNra: String,
         role: String,
         token: String? = null,
-        isVerified: Boolean = true
+        isVerified: Boolean = true,
+        statusVerifikasi: String? = null
     ) {
         cachedRole = role
+        val finalStatusVerifikasi = statusVerifikasi ?: if (isVerified) "1" else "0"
         getSecurePrefs(context).edit()
             .putInt(KEY_USER_ID, userId)
             .putString(KEY_USER_NAME, userName)
@@ -50,11 +53,50 @@ object SessionManager {
             .putString(KEY_ROLE, role)
             .putString(KEY_AUTH_TOKEN, token ?: "")
             .putBoolean(KEY_IS_VERIFIED, isVerified)
+            .putString(KEY_STATUS_VERIFIKASI, finalStatusVerifikasi)
             .apply()
     }
 
     fun setRole(role: String?) {
         cachedRole = role
+    }
+
+    fun setVerificationStatus(context: Context, isVerified: Boolean) {
+        val statusVerif = if (isVerified) "1" else "0"
+        getSecurePrefs(context).edit()
+            .putBoolean(KEY_IS_VERIFIED, isVerified)
+            .putString(KEY_STATUS_VERIFIKASI, statusVerif)
+            .apply()
+    }
+
+    fun setStatusVerifikasi(context: Context, statusVerifikasi: String) {
+        val isVerif = statusVerifikasi == "1" || statusVerifikasi.equals("VERIFIED", ignoreCase = true) || statusVerifikasi.equals("Aktif", ignoreCase = true)
+        getSecurePrefs(context).edit()
+            .putString(KEY_STATUS_VERIFIKASI, statusVerifikasi)
+            .putBoolean(KEY_IS_VERIFIED, isVerif)
+            .apply()
+    }
+
+    fun updateRoleAndVerification(
+        context: Context,
+        role: String,
+        isVerified: Boolean,
+        statusVerifikasi: String = if (isVerified) "1" else "0"
+    ) {
+        cachedRole = role
+        getSecurePrefs(context).edit()
+            .putString(KEY_ROLE, role)
+            .putBoolean(KEY_IS_VERIFIED, isVerified)
+            .putString(KEY_STATUS_VERIFIKASI, statusVerifikasi)
+            .apply()
+    }
+
+    fun getStatusVerifikasi(context: Context): String {
+        val stored = getSecurePrefs(context).getString(KEY_STATUS_VERIFIKASI, null)
+        if (!stored.isNullOrBlank()) {
+            return stored
+        }
+        return if (isVerified(context)) "1" else "0"
     }
 
     fun getRole(context: Context? = null): String {
@@ -88,6 +130,10 @@ object SessionManager {
     }
 
     fun isVerified(context: Context): Boolean {
+        val statusVerif = getSecurePrefs(context).getString(KEY_STATUS_VERIFIKASI, null)
+        if (!statusVerif.isNullOrBlank()) {
+            return statusVerif == "1" || statusVerif.equals("VERIFIED", ignoreCase = true) || statusVerif.equals("Aktif", ignoreCase = true)
+        }
         return getSecurePrefs(context).getBoolean(KEY_IS_VERIFIED, true)
     }
 
