@@ -8,7 +8,7 @@
     android:background="#0F172A"
     android:clipToPadding="false"
     android:fillViewport="true"
-    android:paddingBottom="48dp">
+    android:paddingBottom="24dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -20,7 +20,7 @@
         <!-- ======================================================== -->
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="160dp">
+            android:layout_height="140dp">
 
             <ImageView
                 android:id="@+id/imgBannerLogo"
@@ -43,7 +43,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="-36dp"
+            android:layout_marginTop="-30dp"
             app:cardBackgroundColor="#1E293B"
             app:cardCornerRadius="16dp"
             app:cardElevation="8dp">
@@ -51,13 +51,13 @@
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="16dp">
+                android:padding="14dp">
 
                 <!-- KIRI: Avatar / Foto Profil -->
                 <ImageView
                     android:id="@+id/imgAvatar"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
                     android:layout_alignParentStart="true"
                     android:layout_centerVertical="true"
                     android:background="#2563EB"
@@ -92,7 +92,7 @@
                         android:maxLines="1"
                         android:text="Anggota Nebo"
                         android:textColor="#FFFFFF"
-                        android:textSize="16sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -109,8 +109,8 @@
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnLogout"
                     style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true"
                     android:contentDescription="Logout"
@@ -125,291 +125,282 @@
         </androidx.cardview.widget.CardView>
 
         <!-- ======================================================== -->
-        <!-- 2. SECTION HEADER LAPORAN & TOMBOL REFRESH/SYNC -->
+        <!-- 2. KARTU KEUANGAN 2 KOLOM MENYAMPING (KAS KELILING & ANNIVERSARY) -->
         <!-- ======================================================== -->
-        <RelativeLayout
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="12dp">
+            android:layout_marginTop="16dp"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/tvTitleLaporan"
-                android:layout_width="wrap_content"
+            <!-- KAS KELILING (KIRI - WEIGHT 1) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardKasKeliling"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:layout_centerVertical="true"
-                android:layout_toStartOf="@id/btnSyncRealtime"
-                android:text="📊 Laporan Rekapitulasi Kas"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                app:cardBackgroundColor="#1E293B"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp">
 
-            <!-- Circular Refresh Button 40dp x 40dp -->
-            <ImageButton
-                android:id="@+id/btnSyncRealtime"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_alignParentEnd="true"
-                android:layout_centerVertical="true"
-                android:background="#1E293B"
-                android:contentDescription="Refresh Data"
-                android:padding="8dp"
-                android:src="@android:drawable/ic_popup_sync"
-                app:tint="#38BDF8" />
-        </RelativeLayout>
-
-        <!-- ======================================================== -->
-        <!-- 3. KARTU REKAPITULASI (KAS, ANNIVERSARY, CICILAN, ANGGOTA) -->
-        <!-- ======================================================== -->
-
-        <!-- CARD 1: REKAPITULASI KAS KELILING -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardKasKeliling"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="#1E293B"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:id="@+id/tvHeaderKasKeliling"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="👛 REKAPITULASI KAS KELILING"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginVertical="12dp"
-                    android:background="#334155" />
-
-                <!-- Grid Body: 2 Kolom (Total Pemasukan & Total Pengeluaran) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    android:orientation="horizontal">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Total Pemasukan"
-                            android:textColor="#94A3B8"
-                            android:textSize="11sp" />
-
-                        <TextView
-                            android:id="@+id/tvPemasukanKasKeliling"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Rp 0"
-                            android:textColor="#38BDF8"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Total Pengeluaran"
-                            android:textColor="#94A3B8"
-                            android:textSize="11sp" />
-
-                        <TextView
-                            android:id="@+id/tvPengeluaranKasKeliling"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Rp 0"
-                            android:textColor="#EF4444"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-                </LinearLayout>
-
-                <!-- Footer Box: Container Latar Hijau Transparan -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="#065F46"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="12dp">
+                    android:orientation="vertical"
+                    android:padding="14dp">
 
                     <TextView
-                        android:layout_width="0dp"
+                        android:id="@+id/tvHeaderKasKeliling"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Saldo Kas Keliling"
-                        android:textColor="#A7F3D0"
+                        android:text="👛 Kas Keliling"
+                        android:textColor="#FFFFFF"
                         android:textSize="13sp"
                         android:textStyle="bold" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="8dp"
+                        android:background="#334155" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Saldo Kas"
+                        android:textColor="#94A3B8"
+                        android:textSize="11sp" />
 
                     <TextView
                         android:id="@+id/tvSaldoKasKeliling"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="Rp 0"
-                        android:textColor="#34D399"
-                        android:textSize="16sp"
+                        android:textColor="#4ADE80"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <Spacer
+                        android:layout_width="match_parent"
+                        android:layout_height="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Pemasukan"
+                        android:textColor="#94A3B8"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/tvPemasukanKasKeliling"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Rp 0"
+                        android:textColor="#38BDF8"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Pengeluaran"
+                        android:textColor="#94A3B8"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/tvPengeluaranKasKeliling"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Rp 0"
+                        android:textColor="#EF4444"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
                 </LinearLayout>
+            </androidx.cardview.widget.CardView>
 
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- CARD 2: REKAPITULASI KAS ANNIVERSARY -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardIuranAniv"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="#1E293B"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
+            <!-- KAS ANNIVERSARY (KANAN - WEIGHT 1) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cardIuranAniv"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                app:cardBackgroundColor="#1E293B"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="🎁 REKAPITULASI KAS ANNIVERSARY"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginVertical="12dp"
-                    android:background="#334155" />
-
-                <!-- Grid Body: Target / Status & Belum Bayar -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    android:orientation="horizontal">
+                    android:orientation="vertical"
+                    android:padding="14dp">
 
-                    <LinearLayout
-                        android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
+                        android:text="🎁 Kas Anniversary"
+                        android:textColor="#FFFFFF"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
-                        <TextView
-                            android:id="@+id/tvLabelTargetAniv"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Target / Anggota"
-                            android:textColor="#94A3B8"
-                            android:textSize="11sp" />
-
-                        <TextView
-                            android:id="@+id/tvTargetAniv"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Rp 100.000"
-                            android:textColor="#A78BFA"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:id="@+id/tvLabelBelumBayarAniv"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Belum Bayar"
-                            android:textColor="#94A3B8"
-                            android:textSize="11sp" />
-
-                        <TextView
-                            android:id="@+id/tvBelumBayarAniv"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="0 Anggota"
-                            android:textColor="#EF4444"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-                </LinearLayout>
-
-                <!-- Footer Box: Container Latar Purple Transparan -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="#3B0764"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="12dp">
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="8dp"
+                        android:background="#334155" />
 
                     <TextView
                         android:id="@+id/tvLabelFooterAniv"
-                        android:layout_width="0dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Total Iuran Terkumpul"
-                        android:textColor="#E9D5FF"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
+                        android:text="Total Terkumpul"
+                        android:textColor="#94A3B8"
+                        android:textSize="11sp" />
 
                     <TextView
                         android:id="@+id/tvTotalIuranAniv"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="Rp 0"
+                        android:textColor="#38BDF8"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <Spacer
+                        android:layout_width="match_parent"
+                        android:layout_height="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvLabelTargetAniv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Target / Anggota"
+                        android:textColor="#94A3B8"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/tvTargetAniv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Rp 100.000"
                         android:textColor="#A78BFA"
-                        android:textSize="16sp"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvLabelBelumBayarAniv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Belum Bayar"
+                        android:textColor="#94A3B8"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/tvBelumBayarAniv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 Anggota"
+                        android:textColor="#EF4444"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
                 </LinearLayout>
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
 
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- CARD 3: REKAPITULASI CICILAN BARANG -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardCicilanBarang"
+        <!-- ======================================================== -->
+        <!-- 3. MENU NAVIGASI UTAMA GRID 2X2 MENYAMPING -->
+        <!-- ======================================================== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
+            android:orientation="vertical">
+
+            <!-- ROW 1 (Laporan Kas & Cetak PDF) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnLaporanKas"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="📊 Laporan Kas"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="#2563EB"
+                    app:cornerRadius="12dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCetakPdf"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="📄 Cetak PDF"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="#DC2626"
+                    app:cornerRadius="12dp" />
+            </LinearLayout>
+
+            <!-- ROW 2 (Bagikan WA & Refresh Data) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBagikanWa"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="💬 Bagikan WA"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="#16A34A"
+                    app:cornerRadius="12dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSyncRealtime"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="🔄 Refresh Data"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="#0284C7"
+                    app:cornerRadius="12dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ======================================================== -->
+        <!-- 4. DAFTAR ANGGOTA NEBO SUKABUMI (COMPACT) -->
+        <!-- ======================================================== -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardDaftarAnggota"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
             android:layout_marginBottom="16dp"
             app:cardBackgroundColor="#1E293B"
             app:cardCornerRadius="16dp"
@@ -420,125 +411,6 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="📦 REKAPITULASI CICILAN BARANG"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginVertical="12dp"
-                    android:background="#334155" />
-
-                <!-- Grid Body: Total Harga Barang & Anggota Mencicil -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
-                    android:orientation="horizontal">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Total Harga Barang"
-                            android:textColor="#94A3B8"
-                            android:textSize="11sp" />
-
-                        <TextView
-                            android:id="@+id/tvTotalHargaBarang"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="Rp 0"
-                            android:textColor="#F97316"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:id="@+id/tvLabelAnggotaMencicil"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Anggota Mencicil"
-                            android:textColor="#94A3B8"
-                            android:textSize="11sp" />
-
-                        <TextView
-                            android:id="@+id/tvAnggotaMencicil"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="0 Anggota"
-                            android:textColor="#38BDF8"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-                </LinearLayout>
-
-                <!-- Footer Box: Container Latar Oranye Transparan -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="#7C2D12"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="12dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Total Sisa Cicilan"
-                        android:textColor="#FFEDD5"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvTotalSisaCicilan"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Rp 0"
-                        android:textColor="#F97316"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- CARD 4: DAFTAR ANGGOTA NEBO SUKABUMI -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardDaftarAnggota"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="#1E293B"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
 
                 <!-- Header Card -->
                 <LinearLayout
@@ -548,10 +420,10 @@
                     android:orientation="horizontal">
 
                     <ImageView
-                        android:layout_width="38dp"
-                        android:layout_height="38dp"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
                         android:background="#2563EB"
-                        android:padding="8dp"
+                        android:padding="7dp"
                         android:src="@android:drawable/ic_menu_myplaces"
                         app:tint="#FFFFFF"
                         tools:ignore="ContentDescription" />
@@ -559,12 +431,12 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="12dp"
-                        android:layout_marginEnd="8dp"
+                        android:layout_marginStart="10dp"
+                        android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:text="DAFTAR ANGGOTA NEBO SUKABUMI"
+                        android:text="DAFTAR ANGGOTA"
                         android:textColor="#FFFFFF"
-                        android:textSize="15sp"
+                        android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -573,35 +445,35 @@
                         android:layout_height="wrap_content"
                         android:background="#065F46"
                         android:maxLines="1"
-                        android:paddingHorizontal="10dp"
-                        android:paddingVertical="4dp"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
                         android:singleLine="true"
                         android:text="VERIFIED"
                         android:textColor="#34D399"
-                        android:textSize="11sp"
+                        android:textSize="10sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginVertical="14dp"
+                    android:layout_marginVertical="10dp"
                     android:background="#334155" />
 
                 <!-- Info Ringkas: Total Anggota Terverifikasi -->
                 <RelativeLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="14dp">
+                    android:layout_marginBottom="10dp">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_alignParentStart="true"
                         android:layout_centerVertical="true"
-                        android:text="Total Anggota Terverifikasi"
+                        android:text="Anggota Terverifikasi"
                         android:textColor="#CBD5E1"
-                        android:textSize="14sp" />
+                        android:textSize="13sp" />
 
                     <TextView
                         android:id="@+id/tvTotalAnggotaTerverifikasi"
@@ -609,9 +481,9 @@
                         android:layout_height="wrap_content"
                         android:layout_alignParentEnd="true"
                         android:layout_centerVertical="true"
-                        android:text="0 Anggota Terverifikasi"
-                        android:textColor="#60A5FA"
-                        android:textSize="16sp"
+                        android:text="0 Anggota"
+                        android:textColor="#38BDF8"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
                 </RelativeLayout>
 
@@ -619,9 +491,10 @@
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnLihatSemuaAnggota"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="44dp"
                     android:text="LIHAT SEMUA ANGGOTA"
                     android:textColor="#FFFFFF"
+                    android:textSize="12sp"
                     android:textStyle="bold"
                     app:backgroundTint="#2563EB"
                     app:cornerRadius="12dp"
@@ -634,7 +507,7 @@
                     android:id="@+id/rvDaftarAnggota"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="10dp"
                     android:nestedScrollingEnabled="false"
                     android:visibility="gone" />
             </LinearLayout>

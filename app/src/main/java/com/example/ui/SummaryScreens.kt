@@ -225,6 +225,10 @@ fun AnniversarySummaryScreen(navController: NavController, viewModel: CommunityV
 @Composable
 fun CicilanSummaryScreen(navController: NavController, viewModel: CommunityViewModel) {
     val context = LocalContext.current
+    val userRole by viewModel.loggedInUserRole.collectAsState()
+    val activeRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase()
+    val canSeeCicilan = activeRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER")
+
     var showExportDialog by remember { mutableStateOf(false) }
 
     val anggotaList by viewModel.allAnggota.collectAsState()
@@ -443,12 +447,14 @@ fun CicilanSummaryScreen(navController: NavController, viewModel: CommunityViewM
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showExportDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.PictureAsPdf,
-                            contentDescription = "Ekspor PDF",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    if (canSeeCicilan) {
+                        IconButton(onClick = { openPdfCicilanRahasia(context) }) {
+                            Icon(
+                                imageVector = Icons.Default.PictureAsPdf,
+                                contentDescription = "Cetak PDF Cicilan (Internal)",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             )

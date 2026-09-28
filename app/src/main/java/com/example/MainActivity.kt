@@ -38,13 +38,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val activeRole = SessionManager.getRole(this).let { if (it.isBlank()) "BENDAHARA" else it }.uppercase()
-        val activeNra = SessionManager.getUserNra(this).let { if (it.isBlank()) "0001" else it }
-        if (activeRole in listOf("BENDAHARA", "ADMIN", "DEVELOPER")) {
-            fetchRekapitulasiCicilanBarang(role = activeRole, nra = activeNra)
-        }
-
         // Auto-refresh session status verifikasi akun & role terbaru dari cPanel saat startup
+        fetchDashboardData()
         autoRefreshSession()
 
         setContent {
@@ -192,6 +187,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        fetchDashboardData()
+        autoRefreshSession()
+    }
+
     /**
      * Formatting Rupiah secara presisi dan terstandarisasi.
      */
@@ -333,159 +334,6 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Memanggil endpoint API get_daftar_cicilan_aktif.php?role=BENDAHARA&nra=0001
-     * Khusus Role BENDAHARA, ADMIN, dan DEVELOPER untuk data Akumulasi CPanel.
-     * Mengambil:
-     * - total_harga_barang
-     * - anggota_mencicil
-     * - total_sisa_cicilan
-     * Format Rupiah Indonesia dan Null Safety check ("Rp 0" & "0 Anggota").
-     */
-    fun fetchRekapitulasiCicilanBarang(
-        role: String = "BENDAHARA",
-        nra: String = "0001",
-        tvTotalHargaBarang: android.widget.TextView? = null,
-        tvAnggotaMencicil: android.widget.TextView? = null,
-        tvTotalSisaCicilan: android.widget.TextView? = null,
-        onResult: ((totalHargaBarang: Long, anggotaMencicil: Int, totalSisaCicilan: Long) -> Unit)? = null
-    ) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                // 1. Panggil endpoint API get_daftar_cicilan_aktif.php?role=BENDAHARA&nra=0001
-                val urlStr = "https://nebosukabumi.net/api/get_daftar_cicilan_aktif.php?role=" +
-                        java.net.URLEncoder.encode(role, "UTF-8") +
-                        "&nra=" + java.net.URLEncoder.encode(nra, "UTF-8")
-                val url = URL(urlStr)
-                val connection = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                    setRequestProperty("Accept", "application/json")
-                }
-
-                val responseCode = connection.responseCode
-                if (responseCode == HttpURLConnection.HTTP_OK) {
-                    val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                    val response = StringBuilder()
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        response.append(line)
-                    }
-                    reader.close()
-
-                    val jsonString = response.toString().trim()
-                    var totalHargaBarang = 0L
-                    var anggotaMencicil = 0
-                    var totalSisaCicilan = 0L
-
-                    // 2. Ambil nilai response JSON & 4. Null Safety check
-                    if (jsonString.startsWith("{")) {
-                        val jsonObject = JSONObject(jsonString)
-                        val dataObj = jsonObject.optJSONObject("data")
-
-                        if (dataObj != null) {
-                            totalHargaBarang = dataObj.optLong("total_harga_barang", 0L)
-                            anggotaMencicil = dataObj.optInt("anggota_mencicil", 0)
-                            totalSisaCicilan = dataObj.optLong("total_sisa_cicilan", 0L)
-                        } else {
-                            totalHargaBarang = jsonObject.optLong("total_harga_barang", 0L)
-                            anggotaMencicil = jsonObject.optInt("anggota_mencicil", 0)
-                            totalSisaCicilan = jsonObject.optLong("total_sisa_cicilan", 0L)
-                        }
-
-                        // Fallback parsing jika 'data' berupa JSON Array list anggota cicilan
-                        val dataArray = jsonObject.optJSONArray("data")
-                        if (dataArray != null && totalHargaBarang == 0L && totalSisaCicilan == 0L && dataArray.length() > 0) {
-                            var sumHarga = 0.0
-                            var sumSisa = 0.0
-                            var activeCount = 0
-                            for (i in 0 until dataArray.length()) {
-                                val item = dataArray.optJSONObject(i) ?: continue
-                                val harga = item.optDouble("harga_barang", 0.0)
-                                val sisa = item.optDouble("sisa_cicilan", 0.0)
-                                sumHarga += harga
-                                sumSisa += sisa
-                                if (sisa > 0.0) activeCount++
-                            }
-                            totalHargaBarang = sumHarga.toLong()
-                            totalSisaCicilan = sumSisa.toLong()
-                            anggotaMencicil = activeCount
-                        }
-                    } else if (jsonString.startsWith("[")) {
-                        val jsonArray = JSONArray(jsonString)
-                        var sumHarga = 0.0
-                        var sumSisa = 0.0
-                        var activeCount = 0
-                        for (i in 0 until jsonArray.length()) {
-                            val item = jsonArray.optJSONObject(i) ?: continue
-                            val harga = item.optDouble("harga_barang", 0.0)
-                            val sisa = item.optDouble("sisa_cicilan", 0.0)
-                            sumHarga += harga
-                            sumSisa += sisa
-                            if (sisa > 0.0) activeCount++
-                        }
-                        totalHargaBarang = sumHarga.toLong()
-                        totalSisaCicilan = sumSisa.toLong()
-                        anggotaMencicil = activeCount
-                    }
-
-                    // 3. Format angka mata uang ke Rupiah Indonesia dengan Null Safety:
-                    // - tvTotalHargaBarang: "Rp " + String.format("%,d", total_harga_barang)
-                    // - tvAnggotaMencicil: anggota_mencicil + " Anggota"
-                    // - tvTotalSisaCicilan: "Rp " + String.format("%,d", total_sisa_cicilan)
-                    val formattedHargaBarang = if (totalHargaBarang > 0) {
-                        "Rp " + String.format(Locale("id", "ID"), "%,d", totalHargaBarang)
-                    } else {
-                        "Rp 0"
-                    }
-
-                    val formattedAnggotaMencicil = if (anggotaMencicil > 0) {
-                        "$anggotaMencicil Anggota"
-                    } else {
-                        "0 Anggota"
-                    }
-
-                    val formattedSisaCicilan = if (totalSisaCicilan > 0) {
-                        "Rp " + String.format(Locale("id", "ID"), "%,d", totalSisaCicilan)
-                    } else {
-                        "Rp 0"
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        tvTotalHargaBarang?.text = formattedHargaBarang
-                        tvAnggotaMencicil?.text = formattedAnggotaMencicil
-                        tvTotalSisaCicilan?.text = formattedSisaCicilan
-
-                        // Sinkronisasi data ke ViewModel untuk Compose UI (DashboardScreen)
-                        viewModel.updateRekapitulasiCicilan(
-                            totalHarga = totalHargaBarang.toDouble(),
-                            anggotaMencicil = anggotaMencicil,
-                            totalSisa = totalSisaCicilan.toDouble()
-                        )
-
-                        onResult?.invoke(totalHargaBarang, anggotaMencicil, totalSisaCicilan)
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        tvTotalHargaBarang?.text = "Rp 0"
-                        tvAnggotaMencicil?.text = "0 Anggota"
-                        tvTotalSisaCicilan?.text = "Rp 0"
-                        onResult?.invoke(0L, 0, 0L)
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    tvTotalHargaBarang?.text = "Rp 0"
-                    tvAnggotaMencicil?.text = "0 Anggota"
-                    tvTotalSisaCicilan?.text = "Rp 0"
-                    onResult?.invoke(0L, 0, 0L)
-                }
-            }
-        }
-    }
-
-    /**
      * Memanggil API backend cPanel get_dashboard.php / dashboard.php
      * untuk membaca status verifikasi (status_verifikasi / status == "1" atau "VERIFIED")
      * serta role user terbaru dan memperbarui SessionManager.
@@ -606,24 +454,155 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * Memanggil API https://nebosukabumi.net/api/get_dashboard.php
+     * Parsing JSON Object secara aman menggunakan optDouble dan optInt:
+     * - total_anniversary -> Total Terkumpul (Format Rupiah)
+     * - target_per_anggota -> Target / Anggota (Format Rupiah)
+     * - anggota_belum_bayar -> Belum Bayar (Contoh: "X Anggota")
+     * - saldo_kas -> Card Kas Keliling (Format Rupiah)
+     * - total_anggota -> Banner Total Anggota
+     */
+    fun fetchDashboardData(onComplete: ((com.example.network.DashboardData) -> Unit)? = null) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val currentRole = SessionManager.getRole(this@MainActivity).ifBlank { "MEMBER" }
+                val currentNra = SessionManager.getUserNra(this@MainActivity).ifBlank { "0001" }
+                val urlString = "https://nebosukabumi.net/api/get_dashboard.php?role=" +
+                        java.net.URLEncoder.encode(currentRole, "UTF-8") +
+                        "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8")
+
+                var jsonStr = ""
+                try {
+                    val url = URL(urlString)
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 10000
+                        readTimeout = 10000
+                        setRequestProperty("Accept", "application/json")
+                    }
+                    if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                        val sb = StringBuilder()
+                        var line: String?
+                        while (reader.readLine().also { line = it } != null) {
+                            sb.append(line)
+                        }
+                        reader.close()
+                        jsonStr = sb.toString().trim()
+                    }
+                } catch (e: Exception) {
+                    // Fallback URL jika ada perbedaan path
+                    try {
+                        val fallbackUrl = URL("https://nebosukabumi.net/api/dashboard.php?role=" +
+                                java.net.URLEncoder.encode(currentRole, "UTF-8") +
+                                "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8"))
+                        val conn = (fallbackUrl.openConnection() as HttpURLConnection).apply {
+                            requestMethod = "GET"
+                            connectTimeout = 8000
+                            readTimeout = 8000
+                            setRequestProperty("Accept", "application/json")
+                        }
+                        if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                            val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                            val sb = StringBuilder()
+                            var line: String?
+                            while (reader.readLine().also { line = it } != null) {
+                                sb.append(line)
+                            }
+                            reader.close()
+                            jsonStr = sb.toString().trim()
+                        }
+                    } catch (ex: Exception) {
+                        ex.printStackTrace()
+                    }
+                }
+
+                if (jsonStr.startsWith("{")) {
+                    val root = JSONObject(jsonStr)
+                    val dataObj = if (root.has("data") && !root.isNull("data")) {
+                        root.optJSONObject("data") ?: root
+                    } else {
+                        root
+                    }
+
+                    // Safe parsing dengan optDouble dan optInt
+                    val totalAnggota = dataObj.optInt("total_anggota", 0)
+                    val totalKas = dataObj.optDouble("total_kas", 0.0)
+                    val totalAnniversary = dataObj.optDouble(
+                        "total_anniversary",
+                        dataObj.optDouble(
+                            "total_aniv",
+                            dataObj.optDouble(
+                                "iuran_anniversary",
+                                dataObj.optDouble("iuran_aniv", 0.0)
+                            )
+                        )
+                    )
+                    val targetPerAnggota = dataObj.optDouble("target_per_anggota", dataObj.optDouble("target_aniv", 0.0))
+                    val anggotaBelumBayar = dataObj.optInt(
+                        "anggota_belum_bayar",
+                        dataObj.optInt(
+                            "belum_anniversary",
+                            dataObj.optInt("belum_bayar_aniv", 0)
+                        )
+                    )
+                    val saldoKas = dataObj.optDouble("saldo_kas", dataObj.optDouble("kas_keliling", dataObj.optDouble("total_saldo", 0.0)))
+                    val belumKas = dataObj.optInt("belum_kas", dataObj.optInt("belum_bayar_kas", 0))
+                    val totalPengeluaran = dataObj.optDouble("total_pengeluaran", 0.0)
+                    val totalSisaCicilan = dataObj.optDouble("total_sisa_cicilan", 0.0)
+                    val totalHargaBarang = dataObj.optDouble("total_harga_barang", 0.0)
+                    val totalSudahDibayar = dataObj.optDouble("total_sudah_dibayar", 0.0)
+                    val anggotaMencicil = dataObj.optInt("anggota_mencicil", 0)
+
+                    val parsedData = com.example.network.DashboardData(
+                        total_anggota = totalAnggota,
+                        total_kas = totalKas,
+                        total_anniversary = totalAnniversary,
+                        total_aniv = totalAnniversary,
+                        iuran_anniversary = totalAnniversary,
+                        iuran_aniv = totalAnniversary,
+                        target_per_anggota = targetPerAnggota,
+                        target_aniv = targetPerAnggota,
+                        anggota_belum_bayar = anggotaBelumBayar,
+                        saldo_kas = saldoKas,
+                        kas_keliling = saldoKas,
+                        belum_kas = belumKas,
+                        belum_bayar_kas = belumKas,
+                        belum_anniversary = anggotaBelumBayar,
+                        belum_bayar_aniv = anggotaBelumBayar,
+                        totalPengeluaran = totalPengeluaran,
+                        total_sisa_cicilan = totalSisaCicilan,
+                        total_harga_barang = totalHargaBarang,
+                        total_sudah_dibayar = totalSudahDibayar,
+                        anggota_mencicil = anggotaMencicil
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        viewModel.setDashboardData(parsedData)
+                        onComplete?.invoke(parsedData)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
      * Auto-refresh session saat tombol dialog OK ditekan atau saat pengguna melakukan Swipe Refresh pada Dashboard.
      * Mengambil status verifikasi dan role terbaru dari API cPanel (get_dashboard.php dan get_anggota.php).
      */
     fun autoRefreshSession(onComplete: (() -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 1. Refresh session dari get_dashboard.php
+                // 1. Refresh dashboard data dari get_dashboard.php
+                fetchDashboardData()
+                // 2. Refresh session dari get_dashboard.php
                 fetchDashboardUserSession()
-                // 2. Refresh session & daftar anggota dari get_anggota.php
+                // 3. Refresh session & daftar anggota dari get_anggota.php
                 fetchDaftarAnggota()
-                // 3. Sinkronisasi data ke ViewModel
+                // 4. Sinkronisasi data ke ViewModel
                 viewModel.syncFromApiSuspend()
-
-                val activeRole = SessionManager.getRole(this@MainActivity).let { if (it.isBlank()) "BENDAHARA" else it }.uppercase()
-                val activeNra = SessionManager.getUserNra(this@MainActivity).let { if (it.isBlank()) "0001" else it }
-                if (activeRole in listOf("BENDAHARA", "ADMIN", "DEVELOPER")) {
-                    fetchRekapitulasiCicilanBarang(role = activeRole, nra = activeNra)
-                }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -697,17 +676,10 @@ class MainActivity : ComponentActivity() {
     fun syncAllDataRealtime(onFinished: (() -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                fetchDashboardData()
                 viewModel.syncFromApiSuspend()
                 fetchDashboardUserSession()
                 fetchDaftarAnggota()
-
-                // Cek role aktif user
-                val currentRole = SessionManager.getRole(this@MainActivity).let { if (it.isBlank()) "BENDAHARA" else it }.uppercase()
-                val currentNra = SessionManager.getUserNra(this@MainActivity).let { if (it.isBlank()) "0001" else it }
-
-                // Jika Role adalah BENDAHARA, ADMIN, atau DEVELOPER, ambil data akumulasi cicilan
-                val requestRole = if (currentRole in listOf("BENDAHARA", "ADMIN", "DEVELOPER")) currentRole else "BENDAHARA"
-                fetchRekapitulasiCicilanBarang(role = requestRole, nra = currentNra)
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@MainActivity, "Data CPanel Berhasil Diperbarui", Toast.LENGTH_SHORT).show()

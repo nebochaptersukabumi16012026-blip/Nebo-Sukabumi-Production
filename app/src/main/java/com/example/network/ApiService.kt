@@ -49,9 +49,13 @@ data class ResetPasswordRequest(
 data class DashboardData(
     @Json(name = "total_anggota") val total_anggota: Int? = null,
     @Json(name = "total_kas") val total_kas: Double? = null,
+    @Json(name = "total_anniversary") val total_anniversary: Double? = null,
     @Json(name = "total_aniv") val total_aniv: Double? = null,
     @Json(name = "iuran_aniv") val iuran_aniv: Double? = null,
     @Json(name = "iuran_anniversary") val iuran_anniversary: Double? = null,
+    @Json(name = "target_per_anggota") val target_per_anggota: Double? = null,
+    @Json(name = "target_aniv") val target_aniv: Double? = null,
+    @Json(name = "anggota_belum_bayar") val anggota_belum_bayar: Int? = null,
     @Json(name = "total_pengeluaran") val totalPengeluaran: Double? = null,
     @Json(name = "total_sisa_cicilan") val total_sisa_cicilan: Double? = null,
     @Json(name = "total_harga_barang") val total_harga_barang: Double? = null,
@@ -186,7 +190,7 @@ interface ApiService {
     suspend fun deleteKas(@Body body: Map<String, Any>): Response<BaseResponse<Any>>
 
     @Headers("Cache-Control: no-cache")
-    @GET("dashboard.php")
+    @GET("get_dashboard.php")
     suspend fun getDashboard(): Response<BaseResponse<DashboardData>>
 
     @Headers("Cache-Control: no-cache")

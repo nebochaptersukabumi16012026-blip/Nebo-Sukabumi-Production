@@ -44,6 +44,10 @@ class CommunityRepository(
         _syncError.value = null
     }
 
+    fun setDashboardData(data: DashboardData) {
+        _dashboardData.value = data
+    }
+
     fun updateRekapitulasiCicilan(totalHarga: Double, anggotaMencicil: Int, totalSisa: Double) {
         val current = _dashboardData.value ?: DashboardData()
         _dashboardData.value = current.copy(

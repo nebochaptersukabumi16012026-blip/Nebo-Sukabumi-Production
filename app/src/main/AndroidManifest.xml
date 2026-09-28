@@ -34,6 +34,10 @@
             android:name=".ui.DaftarCicilanActivity"
             android:exported="false"
             android:theme="@style/Theme.NeboSukabumi" />
+        <activity
+            android:name=".ui.DetailAnggotaActivity"
+            android:exported="false"
+            android:theme="@style/Theme.NeboSukabumi" />
     </application>
 
 </manifest>

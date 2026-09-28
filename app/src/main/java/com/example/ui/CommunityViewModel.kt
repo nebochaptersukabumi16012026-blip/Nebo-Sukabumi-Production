@@ -229,6 +229,10 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     val lastSyncTime: StateFlow<String> = _lastSyncTime.asStateFlow()
 
     val dashboardData: StateFlow<com.example.network.DashboardData?> = repository.dashboardDataFlow
+
+    fun setDashboardData(data: com.example.network.DashboardData) {
+        repository.setDashboardData(data)
+    }
     val laporanData: StateFlow<com.example.network.LaporanResponse?> = repository.laporanDataFlow
     val detailKasState: StateFlow<com.example.network.DetailKasResponse?> = repository.detailKasFlow
 

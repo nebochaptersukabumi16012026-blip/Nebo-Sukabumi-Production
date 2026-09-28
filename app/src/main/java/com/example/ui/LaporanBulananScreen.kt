@@ -168,6 +168,11 @@ fun LaporanBulananScreen(
                     }
                 },
                 actions = {
+                    if (canSeeCicilan) {
+                        IconButton(onClick = { openPdfCicilanRahasia(context) }) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Cetak PDF Cicilan (Internal)", tint = Color(0xFFEF4444))
+                        }
+                    }
                     IconButton(onClick = {
                         viewModel.shareLaporanBulananPdf(context, selectedYear, selectedMonth)
                     }) {
@@ -387,6 +392,20 @@ fun LaporanBulananScreen(
                                     )
                                 }
                             }
+
+                            if (canSeeCicilan) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { openPdfCicilanRahasia(context) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Cetak PDF Cicilan (Internal)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -505,6 +524,24 @@ fun LaporanBulananScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Membuka URL PDF Cicilan Rahasia via Custom Chrome Tabs/Browser khusus ADMIN, BENDAHARA, DEVELOPER.
+ */
+fun openPdfCicilanRahasia(context: android.content.Context) {
+    val pdfUrl = "https://nebosukabumi.net/api/cetak_pdf_cicilan_rahasia.php"
+    try {
+        val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+        customTabsIntent.launchUrl(context, android.net.Uri.parse(pdfUrl))
+    } catch (e: Exception) {
+        try {
+            val browserIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(pdfUrl))
+            context.startActivity(browserIntent)
+        } catch (ex: Exception) {
+            Toast.makeText(context, "Gagal membuka PDF Cicilan Rahasia", Toast.LENGTH_SHORT).show()
         }
     }
 }

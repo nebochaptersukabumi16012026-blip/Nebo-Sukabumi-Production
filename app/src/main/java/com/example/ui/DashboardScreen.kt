@@ -157,10 +157,25 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     val saldoKasKelilingFinal = kasSummary?.saldo_kas_keliling ?: (grandTotalPemasukanKK - grandTotalPengeluaranKK)
 
     val targetKas = settings.target_kas
-    val targetAniv = settings.target_aniv
+    val targetAniv = if ((dashboardData?.target_per_anggota ?: 0.0) > 0.0) {
+        dashboardData?.target_per_anggota ?: settings.target_aniv
+    } else if ((dashboardData?.target_aniv ?: 0.0) > 0.0) {
+        dashboardData?.target_aniv ?: settings.target_aniv
+    } else {
+        settings.target_aniv
+    }
+
     val belumBayarKas = dashboardData?.belum_kas ?: dashboardData?.belum_bayar_kas ?: 0
-    val belumBayarAniv = dashboardData?.belum_anniversary ?: dashboardData?.belum_bayar_aniv ?: 0
-    val totalAnggota = dashboardData?.total_anggota ?: 0
+    val belumBayarAniv = dashboardData?.anggota_belum_bayar 
+        ?: dashboardData?.belum_anniversary 
+        ?: dashboardData?.belum_bayar_aniv 
+        ?: (if (anggotaList.isNotEmpty()) anggotaList.count { it.iuranAniv <= 0.0 } else 0)
+
+    val totalAnggota = if ((dashboardData?.total_anggota ?: 0) > 0) {
+        dashboardData?.total_anggota ?: 0
+    } else {
+        if (anggotaList.isNotEmpty()) anggotaList.size else 0
+    }
     
     // Sinkronisasi Rekapitulasi Cicilan: HANYA menghitung anggota yang MASIH MEMILIKI SISA CICILAN (sisa > 0)
     val cicilanAktifList by viewModel.cicilanAktifList.collectAsState()
@@ -185,10 +200,25 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     val saldoKasUnifiedStr = formatRupiah(saldoKasAkhirUtama)
     val totalKasInStr = formatRupiah(totalPemasukanKas)
     
-    val actualAniv = dashboardData?.iuran_anniversary ?: dashboardData?.iuran_aniv ?: dashboardData?.total_aniv ?: 0.0
-    val totalAnivStr = if (dashboardData != null) formatRupiah(actualAniv) else "Memuat..."
+    // Sinkronisasi Nominal Kas Anniversary dengan Detail Iuran Anniversary
+    val sumAnivFromMembers = anggotaList.sumOf { it.iuranAniv }
+    val apiAniv = dashboardData?.total_anniversary 
+        ?: dashboardData?.iuran_anniversary 
+        ?: dashboardData?.total_aniv 
+        ?: dashboardData?.iuran_aniv 
+        ?: dashboardData?.kas_anniversary_data?.total_pemasukan
+
+    val actualAniv = if (apiAniv != null && apiAniv > 0.0) {
+        apiAniv
+    } else if (sumAnivFromMembers > 0.0) {
+        sumAnivFromMembers
+    } else {
+        apiAniv ?: 0.0
+    }
+    val totalAnivStr = formatRupiah(actualAniv)
     
-    val totalKasKelilingSaldoStr = formatRupiah(saldoKasKelilingFinal)
+    val saldoKasKelilingFinalCalculated = dashboardData?.saldo_kas ?: saldoKasKelilingFinal
+    val totalKasKelilingSaldoStr = formatRupiah(saldoKasKelilingFinalCalculated)
 
 
     val bgConfigs by viewModel.bgConfigs.collectAsState()
@@ -347,9 +377,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                     kasOut = formatRupiah(grandTotalPengeluaranKK),
                                     saldoKas = totalKasKelilingSaldoStr,
                                     totalAniv = totalAnivStr,
-                                    totBarang = formatRupiah(totalHargaBarang),
-                                    totSisa = totalSisaCicilanStr,
-                                    jmlMencicil = anggotaPunyaCicilanCount
+                                    totalAnggota = totalAnggota
                                 )
                             },
                             modifier = Modifier.size(36.dp).testTag("btn_toolbar_share_wa")
@@ -565,469 +593,223 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                 )
             }
 
-            // Quick Action Buttons: Share WhatsApp & PDF
+            // Grid 2x2 Navigation/Action Menu
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Row 1: Laporan Kas & Cetak PDF
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = { onNavigateFinance("laporan") },
+                            modifier = Modifier.weight(1f).testTag("btn_laporan_kas_main"),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(vertical = 12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Assessment, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("📊 Laporan Kas", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+
+                        Button(
+                            onClick = { openPdfKeuangan(context) },
+                            modifier = Modifier.weight(1f).testTag("btn_pdf_keuangan_main"),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(vertical = 12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("📄 Cetak PDF", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+
+                    // Row 2: Bagikan WA & Refresh Data
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                shareLaporanKeuanganWhatsApp(
+                                    context = context,
+                                    kasIn = formatRupiah(grandTotalPemasukanKK),
+                                    kasOut = formatRupiah(grandTotalPengeluaranKK),
+                                    saldoKas = totalKasKelilingSaldoStr,
+                                    totalAniv = totalAnivStr,
+                                    totalAnggota = totalAnggota
+                                )
+                            },
+                            modifier = Modifier.weight(1f).testTag("btn_share_whatsapp_main"),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(vertical = 12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("💬 Bagikan WA", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+
+                        Button(
+                            onClick = {
+                                (context as? com.example.MainActivity)?.fetchDashboardData()
+                                (context as? com.example.MainActivity)?.autoRefreshSession()
+                                (context as? com.example.MainActivity)?.syncAllDataRealtime()
+                            },
+                            modifier = Modifier.weight(1f).testTag("btn_refresh_main"),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(vertical = 12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("🔄 Refresh Data", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // 2. KARTU KEUANGAN 2 KOLOM MENYAMPING (KAS KELILING & KAS ANNIVERSARY)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            shareLaporanKeuanganWhatsApp(
-                                context = context,
-                                kasIn = formatRupiah(grandTotalPemasukanKK),
-                                kasOut = formatRupiah(grandTotalPengeluaranKK),
-                                saldoKas = totalKasKelilingSaldoStr,
-                                totalAniv = totalAnivStr,
-                                totBarang = formatRupiah(totalHargaBarang),
-                                totSisa = totalSisaCicilanStr,
-                                jmlMencicil = anggotaPunyaCicilanCount
-                            )
-                        },
+                    // Left Card: KAS KELILING
+                    Card(
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("btn_share_whatsapp_main"),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                        shape = RoundedCornerShape(12.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onNavigateFinance("kas_keliling") },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Share WhatsApp",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = Color.White
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp)
+                        ) {
+                            Text(
+                                text = "👛 Kas Keliling",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                ),
+                                color = Color.White
+                            )
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = Color.White.copy(alpha = 0.1f)
+                            )
+
+                            Text(
+                                text = "Saldo Kas",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = totalKasKelilingSaldoStr,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = Color(0xFF4ADE80)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "Pemasukan",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = formatRupiah(grandTotalPemasukanKK),
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF38BDF8)
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = "Pengeluaran",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = formatRupiah(grandTotalPengeluaranKK),
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF87171)
+                            )
+                        }
                     }
 
-                    Button(
-                        onClick = { openPdfKeuangan(context) },
+                    // Right Card: KAS ANNIVERSARY
+                    Card(
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("btn_pdf_keuangan_main"),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                        shape = RoundedCornerShape(12.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onNavigateFinance("detail_iuran_aniv") },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PictureAsPdf,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "PDF Keuangan",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = Color.White
-                        )
-                    }
-                }
-            }
-
-            // Card 1: REKAPITULASI KAS KELILING (kas_keliling.php)
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .clickable { onNavigateFinance("kas_keliling") },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(Color(0xFF059669).copy(alpha = 0.2f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CalendarMonth,
-                                        contentDescription = null,
-                                        tint = Color(0xFF10B981),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "REKAPITULASI KAS KELILING",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        ),
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = "Sumber: kas_keliling.php",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color.LightGray.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = Color.LightGray
-                            )
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = Color.White.copy(alpha = 0.1f)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Total Pemasukan",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.LightGray
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = formatRupiah(grandTotalPemasukanKK),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF38BDF8)
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Total Pengeluaran",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.LightGray
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = formatRupiah(grandTotalPengeluaranKK),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFFF87171)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Saldo Akhir Kas Keliling Highlight Box
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(Color(0xFF065F46), Color(0xFF047857))
-                                    ),
-                                    RoundedCornerShape(12.dp)
-                                )
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                .padding(14.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Saldo Kas Keliling",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = totalKasKelilingSaldoStr,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 18.sp
-                                    ),
-                                    color = Color(0xFF6EE7B7)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Card 2: REKAPITULASI KAS ANNIVERSARY (iuran_anniversary.php)
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .clickable { onNavigateFinance("detail_iuran_aniv") },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(Color(0xFF7C3AED).copy(alpha = 0.2f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CardGiftcard,
-                                        contentDescription = null,
-                                        tint = Color(0xFFA78BFA),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "REKAPITULASI KAS ANNIVERSARY",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        ),
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = "Sumber: iuran_anniversary.php",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color.LightGray.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = Color.LightGray
+                            Text(
+                                text = "🎁 Kas Anniversary",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                ),
+                                color = Color.White
                             )
-                        }
 
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = Color.White.copy(alpha = 0.1f)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Target / Anggota",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.LightGray
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = formatRupiah(targetAniv),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFFFBBF24)
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Belum Bayar",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.LightGray
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "$belumBayarAniv Anggota",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFFF87171)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Saldo Terkumpul Anniversary Highlight Box
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(Color(0xFF5B21B6), Color(0xFF6D28D9))
-                                    ),
-                                    RoundedCornerShape(12.dp)
-                                )
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Total Iuran Terkumpul",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = totalAnivStr,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 18.sp
-                                    ),
-                                    color = Color(0xFFDDD6FE)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Card 3: REKAPITULASI CICILAN BARANG (cardCicilan / get_daftar_cicilan_aktif.php)
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .testTag("card_cicilan")
-                        .clickable { onNavigateFinance("daftar_cicilan_anggota") },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(Color(0xFFEA580C).copy(alpha = 0.2f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ReceiptLong,
-                                        contentDescription = "Cicilan",
-                                        tint = Color(0xFFFB923C),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "REKAPITULASI CICILAN BARANG",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        ),
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = "Sumber: get_daftar_cicilan_aktif.php",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color.LightGray.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = Color.LightGray
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = Color.White.copy(alpha = 0.1f)
                             )
-                        }
 
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = Color.White.copy(alpha = 0.1f)
-                        )
+                            Text(
+                                text = "Total Terkumpul",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = totalAnivStr,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = Color(0xFF38BDF8)
+                            )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Total Harga Barang",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.LightGray
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = formatRupiah(totalHargaBarang),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF38BDF8)
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Anggota Mencicil",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.LightGray
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "$anggotaPunyaCicilanCount Anggota",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFFFBBF24)
-                                )
-                            }
-                        }
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Target / Anggota",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = formatRupiah(targetAniv),
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFA78BFA)
+                            )
 
-                        // Highlight Sisa Cicilan Box
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(Color(0xFF9A3412), Color(0xFFC2410C))
-                                    ),
-                                    RoundedCornerShape(12.dp)
-                                )
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Total Sisa Cicilan",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = totalSisaCicilanStr,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 18.sp
-                                    ),
-                                    color = Color(0xFFFFEDD5)
-                                )
-                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = "Belum Bayar",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.LightGray
+                            )
+                            Text(
+                                text = "$belumBayarAniv Anggota",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF87171)
+                            )
                         }
                     }
                 }
@@ -1861,16 +1643,15 @@ fun shareLaporanKeuanganWhatsApp(
     kasOut: String,
     saldoKas: String,
     totalAniv: String,
-    totBarang: String,
-    totSisa: String,
-    jmlMencicil: Int
+    totalAnggota: Int = 0,
+    totBarang: String = "Rp 0",
+    totSisa: String = "Rp 0",
+    jmlMencicil: Int = 0
 ) {
     val cleanKasIn = if (kasIn.startsWith("Rp")) kasIn else "Rp $kasIn"
     val cleanKasOut = if (kasOut.startsWith("Rp")) kasOut else "Rp $kasOut"
     val cleanSaldoKas = if (saldoKas.startsWith("Rp")) saldoKas else "Rp $saldoKas"
     val cleanTotalAniv = if (totalAniv.startsWith("Rp")) totalAniv else "Rp $totalAniv"
-    val cleanTotBarang = if (totBarang.startsWith("Rp")) totBarang else "Rp $totBarang"
-    val cleanTotSisa = if (totSisa.startsWith("Rp")) totSisa else "Rp $totSisa"
 
     val message = """
 📌 *LAPORAN TRANSPARANSI KEUANGAN TOTAL*
@@ -1884,10 +1665,8 @@ fun shareLaporanKeuanganWhatsApp(
 🎉 *2. KAS ANNIVERSARY*
 • Total Terkumpul: *$cleanTotalAniv*
 
-📦 *3. CICILAN BARANG*
-• Total Barang: $cleanTotBarang
-• Sisa Cicilan: *$cleanTotSisa*
-• Jumlah Mencicil: $jmlMencicil Orang
+👥 *3. ANGGOTA TERVERIFIKASI*
+• Total Anggota: *$totalAnggota Orang*
 
 🔗 *Cetak PDF Resmi:*
 https://nebosukabumi.net/api/cetak_pdf_keuangan.php
