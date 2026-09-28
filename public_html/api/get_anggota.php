@@ -73,6 +73,8 @@ try {
             'status'            => $statusStr,
             'status_verifikasi' => $isVerified ? '1' : '0',
             'is_verified'       => $isVerified,
+            'kas'               => floatval(isset($row['uang_kas']) ? $row['uang_kas'] : (isset($row['uangKas']) ? $row['uangKas'] : 0)),
+            'aniv'              => floatval(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : (isset($row['iuranAniv']) ? $row['iuranAniv'] : 0)),
             'uang_kas'          => floatval(isset($row['uang_kas']) ? $row['uang_kas'] : (isset($row['uangKas']) ? $row['uangKas'] : 0)),
             'iuran_aniv'        => floatval(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : (isset($row['iuranAniv']) ? $row['iuranAniv'] : 0)),
             'harga_barang'      => $hargaBarang,

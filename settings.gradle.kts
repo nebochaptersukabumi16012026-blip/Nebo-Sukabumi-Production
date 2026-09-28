@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Nebo Sukabumi"
+rootProject.name = "NEBO Sukabumi"
 include(":app")
