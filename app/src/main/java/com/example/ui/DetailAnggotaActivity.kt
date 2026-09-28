@@ -28,7 +28,7 @@ class DetailAnggotaActivity : AppCompatActivity() {
     private lateinit var tvTotalKas: TextView
     private lateinit var tvIuranAnniversary: TextView
 
-    private lateinit var cardCicilan: CardView
+    private lateinit var cardDataCicilan: CardView
     private lateinit var tvHargaBarang: TextView
     private lateinit var tvTotalDibayar: TextView
     private lateinit var tvSisaCicilan: TextView
@@ -57,7 +57,7 @@ class DetailAnggotaActivity : AppCompatActivity() {
         tvTotalKas = findViewById(R.id.tvTotalKas)
         tvIuranAnniversary = findViewById(R.id.tvIuranAnniversary)
 
-        cardCicilan = findViewById(R.id.cardCicilan)
+        cardDataCicilan = findViewById(R.id.cardDataCicilan)
         tvHargaBarang = findViewById(R.id.tvHargaBarang)
         tvTotalDibayar = findViewById(R.id.tvTotalDibayar)
         tvSisaCicilan = findViewById(R.id.tvSisaCicilan)
@@ -95,8 +95,12 @@ class DetailAnggotaActivity : AppCompatActivity() {
     }
 
     /**
-     * Memanggil API: https://nebosukabumi.net/api/get_detail_anggota.php?nra={NRA_USER}
-     * Melakukan safe parsing dengan .optDouble() dan merender ke UI.
+     * Memanggil API: https://nebosukabumi.net/api/get_detail_anggota.php?nra={NRA_TARGET}&role_login={USER_ROLE}&nra_login={USER_NRA}
+     * Logika Hak Akses:
+     * - Role "ADMIN", "BENDAHARA", "DEVELOPER" -> Full Akses (cardDataCicilan SELALU VISIBLE)
+     * - Pemilik akun sendiri (nra_login == nra_target) -> VISIBLE
+     * - can_see_cicilan == true dari response -> VISIBLE
+     * - Member biasa membuka profil orang lain -> GONE
      */
     fun loadDetailAnggota() {
         if (targetNra.isBlank()) {
@@ -106,13 +110,18 @@ class DetailAnggotaActivity : AppCompatActivity() {
 
         progressBar.visibility = View.VISIBLE
 
-        val encodedNra = try {
-            URLEncoder.encode(targetNra, "UTF-8")
-        } catch (e: Exception) {
-            targetNra
-        }
+        // Ambil Role dan NRA dari akun yang sedang login di SessionManager
+        val loggedInRole = SessionManager.getRole(this).trim().uppercase(Locale.ROOT).ifBlank { "MEMBER" }
+        val loggedInNra = SessionManager.getUserNra(this).trim()
 
-        val url = "https://nebosukabumi.net/api/get_detail_anggota.php?nra=$encodedNra"
+        val encodedNra = try { URLEncoder.encode(targetNra, "UTF-8") } catch (e: Exception) { targetNra }
+        val encodedRole = try { URLEncoder.encode(loggedInRole, "UTF-8") } catch (e: Exception) { loggedInRole }
+        val encodedNraLogin = try { URLEncoder.encode(loggedInNra, "UTF-8") } catch (e: Exception) { loggedInNra }
+
+        val url = "https://nebosukabumi.net/api/get_detail_anggota.php?nra=$encodedNra&role_login=$encodedRole&nra_login=$encodedNraLogin"
+
+        val isPrivileged = loggedInRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER", "PENGURUS")
+        val isSelf = loggedInNra.isNotBlank() && loggedInNra.equals(targetNra, ignoreCase = true)
 
         val request = StringRequest(
             Request.Method.GET,
@@ -124,28 +133,32 @@ class DetailAnggotaActivity : AppCompatActivity() {
                     val dataObj = rootJson.optJSONObject("data") ?: rootJson
 
                     // Parsing Response JSON Object `data` dengan .optDouble()
-                    val totalKas = dataObj.optDouble("total_kas", 0.0)
-                    val totalAniv = dataObj.optDouble("total_aniv", 0.0)
+                    val totalKas = dataObj.optDouble("total_kas", dataObj.optDouble("uang_kas", 0.0))
+                    val totalAniv = dataObj.optDouble("total_aniv", dataObj.optDouble("iuran_aniv", 0.0))
                     val hargaBarang = dataObj.optDouble("harga_barang", 0.0)
-                    val totalDibayar = dataObj.optDouble("total_dibayar", 0.0)
                     val sisaCicilan = dataObj.optDouble("sisa_cicilan", 0.0)
+                    var totalDibayar = dataObj.optDouble("total_dibayar", dataObj.optDouble("total_cicilan", 0.0))
+                    if (totalDibayar <= 0.0 && hargaBarang > 0.0 && sisaCicilan < hargaBarang) {
+                        totalDibayar = maxOf(0.0, hargaBarang - sisaCicilan)
+                    }
 
-                    // Render Nominal ke UI Format Rupiah
+                    // Ambil hak akses boolean `can_see_cicilan` dari response JSON
+                    val canSeeCicilanFromApi = dataObj.optBoolean("can_see_cicilan", false)
+                    val allowViewCicilan = isPrivileged || isSelf || canSeeCicilanFromApi
+
+                    // Render Nominal Kas ke UI Format Rupiah
                     tvTotalKas.text = formatRupiah(totalKas)
                     tvIuranAnniversary.text = formatRupiah(totalAniv)
-                    tvHargaBarang.text = formatRupiah(hargaBarang)
-                    tvTotalDibayar.text = formatRupiah(totalDibayar)
-                    tvSisaCicilan.text = formatRupiah(sisaCicilan)
 
-                    // Logika Tampilan Card Cicilan:
-                    // Jika harga_barang > 0 ATAU sisa_cicilan > 0:
-                    //   Tampilkan cardCicilan.visibility = View.VISIBLE
-                    // Jika anggota tidak memiliki cicilan (harga_barang == 0):
-                    //   Sembunyikan cardCicilan.visibility = View.GONE
-                    if (hargaBarang > 0.0 || sisaCicilan > 0.0) {
-                        cardCicilan.visibility = View.VISIBLE
+                    // Logika Tampilan Visibility (cardDataCicilan)
+                    if (allowViewCicilan) {
+                        cardDataCicilan.visibility = View.VISIBLE
+                        tvHargaBarang.text = formatRupiah(hargaBarang)
+                        tvTotalDibayar.text = formatRupiah(totalDibayar)
+                        tvSisaCicilan.text = formatRupiah(sisaCicilan)
                     } else {
-                        cardCicilan.visibility = View.GONE
+                        // Jika Member biasa membuka profil anggota lain: Sembunyikan untuk privasi
+                        cardDataCicilan.visibility = View.GONE
                     }
 
                     // Sinkronisasi data identitas diri jika disediakan API

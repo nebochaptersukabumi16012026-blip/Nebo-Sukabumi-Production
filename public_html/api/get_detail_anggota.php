@@ -15,27 +15,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 include_once 'config.php';
 
+$nraParam = isset($_GET['nra']) ? trim($_GET['nra']) : '';
 $id = isset($_GET['id']) ? intval($_GET['id']) : (isset($_GET['anggota_id']) ? intval($_GET['anggota_id']) : 0);
+$roleLogin = isset($_GET['role_login']) ? strtoupper(trim($_GET['role_login'])) : (isset($_GET['role']) ? strtoupper(trim($_GET['role'])) : '');
+$nraLogin = isset($_GET['nra_login']) ? trim($_GET['nra_login']) : (isset($_GET['login_nra']) ? trim($_GET['login_nra']) : '');
 
-if ($id <= 0) {
+if ($id <= 0 && empty($nraParam)) {
     $data = json_decode(file_get_contents("php://input"));
     if (isset($data->id)) {
         $id = intval($data->id);
     } elseif (isset($data->anggota_id)) {
         $id = intval($data->anggota_id);
+    } elseif (isset($data->nra)) {
+        $nraParam = trim($data->nra);
+    }
+    if (empty($roleLogin) && isset($data->role_login)) {
+        $roleLogin = strtoupper(trim($data->role_login));
+    }
+    if (empty($nraLogin) && isset($data->nra_login)) {
+        $nraLogin = trim($data->nra_login);
     }
 }
 
-if ($id <= 0) {
+if ($id <= 0 && empty($nraParam)) {
     http_response_code(400);
-    echo json_encode(array("status" => "error", "message" => "ID Anggota tidak valid atau kosong"));
+    echo json_encode(array("status" => "error", "message" => "ID atau NRA Anggota tidak valid atau kosong"));
     exit();
 }
 
 try {
     // 1. Query 1: Ambil data Profil Anggota dengan COALESCE total_uang_kas agar selalu terbaca meskipun riwayat kosong
-    $stmt = $conn->prepare("SELECT a.*, COALESCE((SELECT SUM(nominal) FROM riwayat_kas WHERE id_anggota = a.id), 0) AS total_uang_kas FROM anggota a WHERE a.id = ? OR a.nra = ?");
-    $stmt->execute(array($id, $id));
+    if ($id > 0) {
+        $stmt = $conn->prepare("SELECT a.*, COALESCE((SELECT SUM(nominal) FROM riwayat_kas WHERE id_anggota = a.id), 0) AS total_uang_kas FROM anggota a WHERE a.id = ? OR a.nra = ?");
+        $stmt->execute(array($id, strval($id)));
+    } else {
+        $stmt = $conn->prepare("SELECT a.*, COALESCE((SELECT SUM(nominal) FROM riwayat_kas WHERE id_anggota = a.id), 0) AS total_uang_kas FROM anggota a WHERE a.nra = ?");
+        $stmt->execute(array($nraParam));
+    }
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($row) {
@@ -54,6 +70,20 @@ try {
         $sisaCicilan = floatval(isset($row['sisa_cicilan']) ? $row['sisa_cicilan'] : 0);
         $cicilanPerBulan = floatval(isset($row['cicilan_per_bulan']) ? $row['cicilan_per_bulan'] : 0);
         $nraVal = isset($row['nra']) ? $row['nra'] : '';
+
+        // Hitung total_dibayar secara akurat
+        $totalDibayar = floatval(isset($row['total_dibayar']) ? $row['total_dibayar'] : $totalCicilan);
+        if ($totalDibayar <= 0 && $hargaBarang > 0 && $sisaCicilan < $hargaBarang) {
+            $totalDibayar = max(0, $hargaBarang - $sisaCicilan);
+        }
+
+        // Hak Akses Cicilan:
+        // ADMIN, BENDAHARA, DEVELOPER, PENGURUS selalu dapat melihat data cicilan.
+        // Pemilik akun sendiri (nra_login == nra target) juga dapat melihat data cicilan.
+        // Anggota/Member lain tidak dapat melihat cicilan anggota lain (privasi terlindungi).
+        $isPrivileged = in_array($roleLogin, array('ADMIN', 'BENDAHARA', 'DEVELOPER', 'PENGURUS'));
+        $isSelf = (!empty($nraLogin) && !empty($nraVal) && ($nraLogin === $nraVal));
+        $canSeeCicilan = ($isPrivileged || $isSelf || empty($roleLogin)); // default true if internal/unspecified or privileged/self
 
         // 2. Query 2: Ambil riwayat kas dari tabel riwayat_kas / kas_komunitas WHERE nra = :nra / id_anggota = :id ORDER BY tanggal DESC
         $stmt_rk = $conn->prepare("SELECT * FROM riwayat_kas WHERE id_anggota = ? OR id_anggota IN (SELECT id FROM anggota WHERE nra = ?) ORDER BY id DESC");
@@ -153,8 +183,10 @@ try {
             "total_kas" => $uangKas,
             "total_aniv" => $iuranAniv,
             "total_cicilan" => $totalCicilan,
+            "total_dibayar" => $totalDibayar,
             "harga_barang" => $hargaBarang,
             "sisa_cicilan" => $sisaCicilan,
+            "can_see_cicilan" => (bool)$canSeeCicilan,
             "cicilan_per_bulan" => $cicilanPerBulan,
             "nra" => isset($row['nra']) ? $row['nra'] : '',
             "statusAktif" => isset($row['statusAktif']) ? (bool)$row['statusAktif'] : true,

@@ -165,7 +165,7 @@
 
             <!-- Card DATA CICILAN BARANG (Di bawah Card DATA KAS) -->
             <androidx.cardview.widget.CardView
-                android:id="@+id/cardCicilan"
+                android:id="@+id/cardDataCicilan"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
@@ -184,7 +184,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="DATA CICILAN BARANG"
-                        android:textColor="#F59E0B"
+                        android:textColor="#38BDF8"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
@@ -194,14 +194,14 @@
                         android:layout_marginVertical="10dp"
                         android:background="#334155" />
 
-                    <!-- Baris 1: Total Harga Barang (Warna: #38BDF8) -->
+                    <!-- Baris 1: Harga Barang (Warna: #38BDF8) -->
                     <RelativeLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content">
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Total Harga Barang"
+                            android:text="Harga Barang"
                             android:textColor="#CBD5E1"
                             android:textSize="14sp" />
                         <TextView
@@ -215,7 +215,7 @@
                             android:textStyle="bold" />
                     </RelativeLayout>
 
-                    <!-- Baris 2: Total Terbayar (Warna: #4ADE80) -->
+                    <!-- Baris 2: Total Dibayar (Warna: #4ADE80) -->
                     <RelativeLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -223,7 +223,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Total Terbayar"
+                            android:text="Total Dibayar"
                             android:textColor="#CBD5E1"
                             android:textSize="14sp" />
                         <TextView
