@@ -671,145 +671,170 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                 }
             }
 
-            // 2. KARTU KEUANGAN 2 KOLOM MENYAMPING (KAS KELILING & KAS ANNIVERSARY)
+            // 2. KARTU KEUANGAN 2 KOLOM MENYAMPING (GRID 2X2 TERPISAH)
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Left Card: KAS KELILING
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onNavigateFinance("kas_keliling") },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // BARIS 1: KAS KELILING (KIRI) | KAS ANNIVERSARY (KANAN)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(
+                        // Card 1: KAS KELILING (KIRI)
+                        val kasKelilingSaldo = dashboardData?.kas_keliling ?: dashboardData?.saldo_kas ?: saldoKasKelilingFinal
+                        val kasKelilingNominalStr = formatRupiah(kasKelilingSaldo)
+                        Card(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp)
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onNavigateFinance("kas_keliling") },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
-                            Text(
-                                text = "👛 Kas Keliling",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                ),
-                                color = Color.White
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = "KAS KELILING",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
 
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                color = Color.White.copy(alpha = 0.1f)
-                            )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = Color.White.copy(alpha = 0.1f)
+                                )
 
-                            Text(
-                                text = "Saldo Kas",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.LightGray
-                            )
-                            Text(
-                                text = totalKasKelilingSaldoStr,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                color = Color(0xFF4ADE80)
-                            )
+                                Text(
+                                    text = kasKelilingNominalStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
+                                    color = Color(0xFF4ADE80)
+                                )
+                            }
+                        }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                        // Card 2: KAS ANNIVERSARY (KANAN)
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onNavigateFinance("detail_iuran_aniv") },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = "KAS ANNIVERSARY",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
 
-                            Text(
-                                text = "Pemasukan",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.LightGray
-                            )
-                            Text(
-                                text = formatRupiah(grandTotalPemasukanKK),
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFF38BDF8)
-                            )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = Color.White.copy(alpha = 0.1f)
+                                )
 
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = "Pengeluaran",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.LightGray
-                            )
-                            Text(
-                                text = formatRupiah(grandTotalPengeluaranKK),
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFF87171)
-                            )
+                                Text(
+                                    text = totalAnivStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
+                                    color = Color(0xFFFACC15)
+                                )
+                            }
                         }
                     }
 
-                    // Right Card: KAS ANNIVERSARY
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onNavigateFinance("detail_iuran_aniv") },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    // BARIS 2: PEMASUKAN KAS (KIRI) | PENGELUARAN KAS (KANAN)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(
+                        // Card 3: TOTAL PEMASUKAN (KIRI)
+                        val pemasukanNominalStr = formatRupiah(dashboardData?.pemasukan_kas ?: dashboardData?.total_kas ?: grandTotalPemasukanKK)
+                        Card(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp)
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onNavigateFinance("laporan") },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
-                            Text(
-                                text = "🎁 Kas Anniversary",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                ),
-                                color = Color.White
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = "TOTAL PEMASUKAN",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
 
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                color = Color.White.copy(alpha = 0.1f)
-                            )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = Color.White.copy(alpha = 0.1f)
+                                )
 
-                            Text(
-                                text = "Total Terkumpul",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.LightGray
-                            )
-                            Text(
-                                text = totalAnivStr,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                color = Color(0xFF38BDF8)
-                            )
+                                Text(
+                                    text = pemasukanNominalStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
+                                    color = Color(0xFF38BDF8)
+                                )
+                            }
+                        }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                        // Card 4: TOTAL PENGELUARAN (KANAN)
+                        val pengeluaranNominalStr = formatRupiah(dashboardData?.pengeluaran_kas ?: dashboardData?.totalPengeluaran ?: grandTotalPengeluaranKK)
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onNavigateFinance("pengeluaran_kas") },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = "TOTAL PENGELUARAN",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
 
-                            Text(
-                                text = "Target / Anggota",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.LightGray
-                            )
-                            Text(
-                                text = formatRupiah(targetAniv),
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFA78BFA)
-                            )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = Color.White.copy(alpha = 0.1f)
+                                )
 
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Text(
-                                text = "Belum Bayar",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.LightGray
-                            )
-                            Text(
-                                text = "$belumBayarAniv Anggota",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFF87171)
-                            )
+                                Text(
+                                    text = pengeluaranNominalStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
+                                    color = Color(0xFFF87171)
+                                )
+                            }
                         }
                     }
                 }

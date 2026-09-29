@@ -90,10 +90,19 @@ try {
         $kas_keliling_in = floatval($row_kk['total_akumulasi_masuk'] ?? 0.0);
         $kas_keliling_out = floatval($row_kk['total_akumulasi_keluar'] ?? 0.0);
     }
-    if ($kas_keliling_in <= 0) {
-        $stmt_kk_fb = $db->query("SELECT COALESCE(SUM(CASE WHEN jenis_transaksi = 'Pemasukan' THEN nominal ELSE total_pemasukan END), 0) as total FROM kas_keliling");
-        if ($stmt_kk_fb && $row_kk_fb = $stmt_kk_fb->fetch(PDO::FETCH_ASSOC)) {
-            $kas_keliling_in = floatval($row_kk_fb['total'] ?? 0.0);
+    // Direct aggregate from kas_keliling table
+    $stmt_kk_in = $db->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pemasukan' OR LOWER(jenis_transaksi) = 'pemasukan' OR (COALESCE(jenis, '') = '' AND COALESCE(jenis_transaksi, '') = '')");
+    if ($stmt_kk_in && $row_kin = $stmt_kk_in->fetch(PDO::FETCH_ASSOC)) {
+        $kin = floatval($row_kin['total'] ?? 0.0);
+        if ($kin > 0 || $kas_keliling_in <= 0) {
+            $kas_keliling_in = max($kas_keliling_in, $kin);
+        }
+    }
+    $stmt_kk_out = $db->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pengeluaran' OR LOWER(jenis_transaksi) = 'pengeluaran'");
+    if ($stmt_kk_out && $row_kout = $stmt_kk_out->fetch(PDO::FETCH_ASSOC)) {
+        $kout = floatval($row_kout['total'] ?? 0.0);
+        if ($kout > 0 || $kas_keliling_out <= 0) {
+            $kas_keliling_out = max($kas_keliling_out, $kout);
         }
     }
     $saldo_kas_keliling = max(0.0, $kas_keliling_in - $kas_keliling_out);
@@ -148,7 +157,12 @@ try {
     $responseData = [
         "total_anggota"        => $total_anggota,
         "saldo_kas"            => $saldo_kas_keliling,
+        "saldo_kas_utama"      => $saldo_kas_utama,
         "kas_keliling"         => $saldo_kas_keliling,
+        "pemasukan_kas"        => $kas_keliling_in,
+        "total_pemasukan"      => $kas_keliling_in,
+        "pengeluaran_kas"      => $kas_keliling_out,
+        "total_pengeluaran"    => $kas_keliling_out,
         "total_anniversary"    => $raw_total_aniv,
         "total_aniv"           => $raw_total_aniv,
         "iuran_anniversary"    => $raw_total_aniv,
@@ -161,7 +175,6 @@ try {
         "total_kas"            => $total_pemasukan_kas,
         "belum_kas"            => $belum_bayar_kas,
         "belum_bayar_kas"      => $belum_bayar_kas,
-        "total_pengeluaran"    => $total_pengeluaran_all,
         "id_user"              => $idUser,
         "name"                 => $name,
         "role"                 => $rawRole,

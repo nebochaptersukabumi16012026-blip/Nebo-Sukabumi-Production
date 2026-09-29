@@ -478,7 +478,12 @@ class MainActivity : ComponentActivity() {
                         requestMethod = "GET"
                         connectTimeout = 10000
                         readTimeout = 10000
+                        useCaches = false
+                        defaultUseCaches = false
                         setRequestProperty("Accept", "application/json")
+                        setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
+                        setRequestProperty("Pragma", "no-cache")
+                        setRequestProperty("Expires", "0")
                     }
                     if (conn.responseCode == HttpURLConnection.HTTP_OK) {
                         val reader = BufferedReader(InputStreamReader(conn.inputStream))
@@ -500,7 +505,12 @@ class MainActivity : ComponentActivity() {
                             requestMethod = "GET"
                             connectTimeout = 8000
                             readTimeout = 8000
+                            useCaches = false
+                            defaultUseCaches = false
                             setRequestProperty("Accept", "application/json")
+                            setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
+                            setRequestProperty("Pragma", "no-cache")
+                            setRequestProperty("Expires", "0")
                         }
                         if (conn.responseCode == HttpURLConnection.HTTP_OK) {
                             val reader = BufferedReader(InputStreamReader(conn.inputStream))
@@ -527,7 +537,20 @@ class MainActivity : ComponentActivity() {
 
                     // Safe parsing dengan optDouble dan optInt
                     val totalAnggota = dataObj.optInt("total_anggota", 0)
-                    val totalKas = dataObj.optDouble("total_kas", 0.0)
+                    val kasKeliling = dataObj.optDouble(
+                        "kas_keliling",
+                        dataObj.optDouble("saldo_kas", dataObj.optDouble("saldo_kas_utama", dataObj.optDouble("total_saldo", 0.0)))
+                    )
+                    val saldoKas = kasKeliling
+                    val totalKas = dataObj.optDouble("total_kas", dataObj.optDouble("pemasukan_kas", 0.0))
+                    val pemasukanKas = dataObj.optDouble(
+                        "pemasukan_kas",
+                        dataObj.optDouble("total_pemasukan", dataObj.optDouble("total_kas", 0.0))
+                    )
+                    val pengeluaranKas = dataObj.optDouble(
+                        "pengeluaran_kas",
+                        dataObj.optDouble("total_pengeluaran", 0.0)
+                    )
                     val totalAnniversary = dataObj.optDouble(
                         "total_anniversary",
                         dataObj.optDouble(
@@ -546,9 +569,8 @@ class MainActivity : ComponentActivity() {
                             dataObj.optInt("belum_bayar_aniv", 0)
                         )
                     )
-                    val saldoKas = dataObj.optDouble("saldo_kas", dataObj.optDouble("kas_keliling", dataObj.optDouble("total_saldo", 0.0)))
                     val belumKas = dataObj.optInt("belum_kas", dataObj.optInt("belum_bayar_kas", 0))
-                    val totalPengeluaran = dataObj.optDouble("total_pengeluaran", 0.0)
+                    val totalPengeluaran = pengeluaranKas
                     val totalSisaCicilan = dataObj.optDouble("total_sisa_cicilan", 0.0)
                     val totalHargaBarang = dataObj.optDouble("total_harga_barang", 0.0)
                     val totalSudahDibayar = dataObj.optDouble("total_sudah_dibayar", 0.0)
@@ -565,7 +587,9 @@ class MainActivity : ComponentActivity() {
                         target_aniv = targetPerAnggota,
                         anggota_belum_bayar = anggotaBelumBayar,
                         saldo_kas = saldoKas,
-                        kas_keliling = saldoKas,
+                        kas_keliling = kasKeliling,
+                        pemasukan_kas = pemasukanKas,
+                        pengeluaran_kas = pengeluaranKas,
                         belum_kas = belumKas,
                         belum_bayar_kas = belumKas,
                         belum_anniversary = anggotaBelumBayar,

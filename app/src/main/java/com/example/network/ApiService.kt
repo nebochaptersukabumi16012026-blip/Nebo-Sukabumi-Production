@@ -66,6 +66,8 @@ data class DashboardData(
     @Json(name = "kas_keliling") val kas_keliling: Double? = null,
     @Json(name = "kas_keliling_bulan_ini") val kas_keliling_bulan_ini: Double? = null,
     @Json(name = "saldo_kas") val saldo_kas: Double? = null,
+    @Json(name = "pemasukan_kas") val pemasukan_kas: Double? = null,
+    @Json(name = "pengeluaran_kas") val pengeluaran_kas: Double? = null,
     @Json(name = "belum_bayar_kas") val belum_bayar_kas: Int? = null,
     @Json(name = "belum_kas") val belum_kas: Int? = null,
     @Json(name = "belum_bayar_aniv") val belum_bayar_aniv: Int? = null,
