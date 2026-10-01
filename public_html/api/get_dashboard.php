@@ -74,37 +74,41 @@ try {
         $total_pemasukan_kas = floatval($row_master['total_akumulasi_masuk'] ?? 0.0);
         $kas_utama_out = floatval($row_master['total_akumulasi_keluar'] ?? 0.0);
     }
-    if ($total_pemasukan_kas <= 0) {
-        $stmt_fb = $db->query("SELECT COALESCE(SUM(uang_kas), 0) as total FROM anggota");
-        if ($stmt_fb && $row_fb = $stmt_fb->fetch(PDO::FETCH_ASSOC)) {
-            $total_pemasukan_kas = floatval($row_fb['total'] ?? 0.0);
-        }
+    // Fallback/validation from anggota and riwayat_kas
+    $stmt_fb = $db->query("SELECT COALESCE(SUM(uang_kas), 0) as total FROM anggota");
+    if ($stmt_fb && $row_fb = $stmt_fb->fetch(PDO::FETCH_ASSOC)) {
+        $sum_ang = floatval($row_fb['total'] ?? 0.0);
+        $total_pemasukan_kas = max($total_pemasukan_kas, $sum_ang);
+    }
+    $stmt_rk = $db->query("SELECT COALESCE(SUM(nominal), 0) as total FROM riwayat_kas");
+    if ($stmt_rk && $row_rk = $stmt_rk->fetch(PDO::FETCH_ASSOC)) {
+        $sum_rk = floatval($row_rk['total'] ?? 0.0);
+        $total_pemasukan_kas = max($total_pemasukan_kas, $sum_rk);
+    }
+    $stmt_out_ku = $db->query("SELECT COALESCE(SUM(nominal), 0) as total FROM pengeluaran WHERE LOWER(jenis_kas) IN ('kas_utama', 'kas utama', 'kas', 'saldo kas', 'uang kas', 'uang_kas') OR (LOWER(jenis_kas) NOT LIKE '%keliling%' AND LOWER(jenis_kas) NOT LIKE '%aniv%' AND LOWER(jenis_kas) NOT LIKE '%anniversary%')");
+    if ($stmt_out_ku && $row_oku = $stmt_out_ku->fetch(PDO::FETCH_ASSOC)) {
+        $sum_oku = floatval($row_oku['total'] ?? 0.0);
+        $kas_utama_out = max($kas_utama_out, $sum_oku);
     }
     $saldo_kas_utama = max(0.0, $total_pemasukan_kas - $kas_utama_out);
 
-    // C. Kas Keliling
-    $kas_keliling_in = 0.0;
-    $kas_keliling_out = 0.0;
-    $stmt_kk = $db->query("SELECT total_akumulasi_masuk, total_akumulasi_keluar FROM saldo_akumulasi WHERE jenis_kas = 'kas_keliling'");
-    if ($stmt_kk && $row_kk = $stmt_kk->fetch(PDO::FETCH_ASSOC)) {
-        $kas_keliling_in = floatval($row_kk['total_akumulasi_masuk'] ?? 0.0);
-        $kas_keliling_out = floatval($row_kk['total_akumulasi_keluar'] ?? 0.0);
-    }
-    // Direct aggregate from kas_keliling table
-    $stmt_kk_in = $db->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pemasukan' OR LOWER(jenis_transaksi) = 'pemasukan' OR (COALESCE(jenis, '') = '' AND COALESCE(jenis_transaksi, '') = '')");
-    if ($stmt_kk_in && $row_kin = $stmt_kk_in->fetch(PDO::FETCH_ASSOC)) {
-        $kin = floatval($row_kin['total'] ?? 0.0);
-        if ($kin > 0 || $kas_keliling_in <= 0) {
-            $kas_keliling_in = max($kas_keliling_in, $kin);
-        }
-    }
-    $stmt_kk_out = $db->query("SELECT COALESCE(SUM(nominal), 0) as total FROM kas_keliling WHERE LOWER(jenis) = 'pengeluaran' OR LOWER(jenis_transaksi) = 'pengeluaran'");
-    if ($stmt_kk_out && $row_kout = $stmt_kk_out->fetch(PDO::FETCH_ASSOC)) {
-        $kout = floatval($row_kout['total'] ?? 0.0);
-        if ($kout > 0 || $kas_keliling_out <= 0) {
-            $kas_keliling_out = max($kas_keliling_out, $kout);
-        }
-    }
+    // C. Kas Keliling (Satu Sumber Data Riil dari Tabel kas_keliling)
+    $stmt_sum_kk = $db->query("SELECT 
+        COALESCE(SUM(CASE 
+            WHEN total_pemasukan > 0 THEN total_pemasukan
+            WHEN LOWER(COALESCE(jenis_transaksi, jenis, '')) = 'pemasukan' THEN nominal
+            WHEN (COALESCE(jenis, '') = '' AND COALESCE(jenis_transaksi, '') = '') THEN nominal
+            ELSE 0 
+        END), 0) AS total_in,
+        COALESCE(SUM(CASE 
+            WHEN total_pengeluaran > 0 THEN total_pengeluaran
+            WHEN LOWER(COALESCE(jenis_transaksi, jenis, '')) = 'pengeluaran' THEN nominal
+            ELSE 0 
+        END), 0) AS total_out
+    FROM kas_keliling");
+    $row_kk_sum = $stmt_sum_kk ? $stmt_sum_kk->fetch(PDO::FETCH_ASSOC) : null;
+    $kas_keliling_in = floatval($row_kk_sum['total_in'] ?? 0.0);
+    $kas_keliling_out = floatval($row_kk_sum['total_out'] ?? 0.0);
     $saldo_kas_keliling = max(0.0, $kas_keliling_in - $kas_keliling_out);
 
     // D. Kas Anniversary
@@ -115,11 +119,15 @@ try {
         $raw_total_aniv = floatval($row_aniv['total_akumulasi_masuk'] ?? 0.0);
         $aniv_out = floatval($row_aniv['total_akumulasi_keluar'] ?? 0.0);
     }
-    if ($raw_total_aniv <= 0) {
-        $stmt_aniv_fb = $db->query("SELECT COALESCE(SUM(iuran_aniv), 0) as total FROM anggota");
-        if ($stmt_aniv_fb && $row_aniv_fb = $stmt_aniv_fb->fetch(PDO::FETCH_ASSOC)) {
-            $raw_total_aniv = floatval($row_aniv_fb['total'] ?? 0.0);
-        }
+    $stmt_aniv_fb = $db->query("SELECT COALESCE(SUM(iuran_aniv), 0) as total FROM anggota");
+    if ($stmt_aniv_fb && $row_aniv_fb = $stmt_aniv_fb->fetch(PDO::FETCH_ASSOC)) {
+        $sum_aniv_ang = floatval($row_aniv_fb['total'] ?? 0.0);
+        $raw_total_aniv = max($raw_total_aniv, $sum_aniv_ang);
+    }
+    $stmt_ia = $db->query("SELECT COALESCE(SUM(nominal), 0) as total FROM iuran_anniversary");
+    if ($stmt_ia && $row_ia = $stmt_ia->fetch(PDO::FETCH_ASSOC)) {
+        $sum_ia = floatval($row_ia['total'] ?? 0.0);
+        $raw_total_aniv = max($raw_total_aniv, $sum_ia);
     }
     $saldo_kas_aniv = max(0.0, $raw_total_aniv - $aniv_out);
 
@@ -153,41 +161,118 @@ try {
     }
 
     $total_pengeluaran_all = $kas_utama_out + $kas_keliling_out + $aniv_out;
+    $total_saldo_all = $saldo_kas_utama + $saldo_kas_keliling + $saldo_kas_aniv;
+
+    // F. Cicilan Aktif / Saldo Cicilan
+    $saldo_cicilan = 0.0;
+    $total_harga_barang = 0.0;
+    $total_sudah_dibayar = 0.0;
+    $anggota_mencicil = 0;
+    try {
+        $stmt_cicilan = $db->query("SELECT 
+            COALESCE(SUM(COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0)), 0) AS total_harga_barang,
+            COALESCE(SUM(COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)), 0) AS total_sudah_dibayar,
+            COALESCE(SUM(CASE WHEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0 
+                              THEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) 
+                              ELSE (COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)) END), 0) AS total_sisa_cicilan,
+            COUNT(DISTINCT nra) AS anggota_mencicil
+        FROM anggota 
+        WHERE (COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0) > 0 OR COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0)");
+
+        if ($stmt_cicilan && $row_c = $stmt_cicilan->fetch(PDO::FETCH_ASSOC)) {
+            $anggota_mencicil = intval($row_c['anggota_mencicil'] ?? 0);
+            if ($anggota_mencicil > 0) {
+                $total_harga_barang = floatval($row_c['total_harga_barang'] ?? 0.0);
+                $total_sudah_dibayar = floatval($row_c['total_sudah_dibayar'] ?? 0.0);
+                $saldo_cicilan = floatval($row_c['total_sisa_cicilan'] ?? 0.0);
+            }
+        }
+    } catch (Throwable $e) {
+        $saldo_cicilan = 0.0;
+    }
 
     $responseData = [
-        "total_anggota"        => $total_anggota,
-        "saldo_kas"            => $saldo_kas_keliling,
-        "saldo_kas_utama"      => $saldo_kas_utama,
-        "kas_keliling"         => $saldo_kas_keliling,
-        "pemasukan_kas"        => $kas_keliling_in,
-        "total_pemasukan"      => $kas_keliling_in,
-        "pengeluaran_kas"      => $kas_keliling_out,
-        "total_pengeluaran"    => $kas_keliling_out,
-        "total_anniversary"    => $raw_total_aniv,
-        "total_aniv"           => $raw_total_aniv,
-        "iuran_anniversary"    => $raw_total_aniv,
-        "iuran_aniv"           => $raw_total_aniv,
-        "target_per_anggota"   => $target_aniv,
-        "target_aniv"          => $target_aniv,
-        "anggota_belum_bayar"  => $belum_bayar_aniv,
-        "belum_anniversary"    => $belum_bayar_aniv,
-        "belum_bayar_aniv"     => $belum_bayar_aniv,
-        "total_kas"            => $total_pemasukan_kas,
-        "belum_kas"            => $belum_bayar_kas,
-        "belum_bayar_kas"      => $belum_bayar_kas,
-        "id_user"              => $idUser,
-        "name"                 => $name,
-        "role"                 => $rawRole,
-        "is_verified"          => $isVerified,
-        "status_verifikasi"    => $isVerified ? "1" : "0",
-        "status"               => $isVerified ? "VERIFIED" : "PENDING"
+        "total_anggota"            => $total_anggota,
+        "saldo_kas"                => $saldo_kas_utama,
+        "saldo_kas_utama"          => $saldo_kas_utama,
+        "kas_anniversary"          => $raw_total_aniv,
+        "kas_keliling"             => $saldo_kas_keliling,
+        "saldo_kas_keliling"       => $saldo_kas_keliling,
+        "saldo_cicilan"            => $saldo_cicilan,
+        "total_sisa_cicilan"       => $saldo_cicilan,
+        "total_harga_barang"       => $total_harga_barang,
+        "total_sudah_dibayar"      => $total_sudah_dibayar,
+        "anggota_mencicil"         => $anggota_mencicil,
+        "pemasukan_kas_keliling"   => $kas_keliling_in,
+        "pengeluaran_kas_keliling" => $kas_keliling_out,
+        "pemasukan_kas"            => $kas_keliling_in,
+        "total_pemasukan"          => $kas_keliling_in,
+        "pengeluaran_kas"          => $kas_keliling_out,
+        "total_pengeluaran"        => $kas_keliling_out,
+        "total_anniversary"        => $raw_total_aniv,
+        "total_aniv"               => $raw_total_aniv,
+        "iuran_anniversary"        => $raw_total_aniv,
+        "iuran_aniv"               => $raw_total_aniv,
+        "target_per_anggota"       => $target_aniv,
+        "target_aniv"              => $target_aniv,
+        "target_kas"               => $target_kas,
+        "anggota_belum_bayar"      => $belum_bayar_aniv,
+        "belum_anniversary"        => $belum_bayar_aniv,
+        "belum_bayar_aniv"         => $belum_bayar_aniv,
+        "total_kas"                => $total_pemasukan_kas,
+        "belum_kas"                => $belum_bayar_kas,
+        "belum_bayar_kas"          => $belum_bayar_kas,
+        "total_saldo"              => $total_saldo_all,
+        "kas_utama"                => [
+            "total_pemasukan"   => $total_pemasukan_kas,
+            "total_pengeluaran" => $kas_utama_out,
+            "saldo_kas"         => $saldo_kas_utama
+        ],
+        "kas_keliling_data"        => [
+            "total_pemasukan"   => $kas_keliling_in,
+            "total_pengeluaran" => $kas_keliling_out,
+            "saldo_keliling"    => $saldo_kas_keliling
+        ],
+        "kas_anniversary_data"     => [
+            "total_pemasukan"   => $raw_total_aniv,
+            "total_pengeluaran" => $aniv_out,
+            "saldo_aniv"        => $saldo_kas_aniv
+        ],
+        "cicilan"                  => [
+            "total_harga_barang"  => $total_harga_barang,
+            "total_sudah_dibayar" => $total_sudah_dibayar,
+            "total_sisa_cicilan"  => $saldo_cicilan,
+            "anggota_mencicil"    => $anggota_mencicil
+        ],
+        "id_user"                  => $idUser,
+        "name"                     => $name,
+        "role"                     => $rawRole,
+        "is_verified"              => $isVerified,
+        "status_verifikasi"        => $isVerified ? "1" : "0",
+        "status"                   => $isVerified ? "VERIFIED" : "PENDING"
     ];
 
     echo json_encode([
-        "status"  => "success",
-        "success" => true,
-        "data"    => $responseData,
-        "user"    => [
+        "status"                   => "success",
+        "success"                  => true,
+        "total_anggota"            => $total_anggota,
+        "saldo_kas"                => $saldo_kas_utama,
+        "saldo_kas_utama"          => $saldo_kas_utama,
+        "kas_anniversary"          => $raw_total_aniv,
+        "total_anniversary"        => $raw_total_aniv,
+        "kas_keliling"             => $saldo_kas_keliling,
+        "saldo_kas_keliling"       => $saldo_kas_keliling,
+        "saldo_cicilan"            => $saldo_cicilan,
+        "total_sisa_cicilan"       => $saldo_cicilan,
+        "total_harga_barang"       => $total_harga_barang,
+        "total_sudah_dibayar"      => $total_sudah_dibayar,
+        "anggota_mencicil"         => $anggota_mencicil,
+        "pemasukan_kas_keliling"   => $kas_keliling_in,
+        "pengeluaran_kas_keliling" => $kas_keliling_out,
+        "pemasukan_kas"            => $kas_keliling_in,
+        "pengeluaran_kas"          => $kas_keliling_out,
+        "data"                     => $responseData,
+        "user"                     => [
             "id"                => $idUser,
             "nama"              => $name,
             "role"              => $rawRole,

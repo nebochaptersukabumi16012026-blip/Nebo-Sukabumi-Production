@@ -199,13 +199,13 @@ class MainActivity : ComponentActivity() {
     fun formatRupiah(amount: Double?): String {
         if (amount == null || amount.isNaN()) return "Rp 0"
         return try {
-            val localeID = Locale("id", "ID")
+            val localeID = Locale("in", "ID")
             val formatter = NumberFormat.getCurrencyInstance(localeID).apply {
                 maximumFractionDigits = 0
             }
             formatter.format(amount).replace("Rp", "Rp ").replace(",00", "")
         } catch (e: Exception) {
-            "Rp " + String.format(Locale("id", "ID"), "%,.0f", amount)
+            "Rp " + String.format(Locale("in", "ID"), "%,.0f", amount)
         }
     }
 
@@ -536,50 +536,94 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Safe parsing dengan optDouble dan optInt
-                    val totalAnggota = dataObj.optInt("total_anggota", 0)
-                    val kasKeliling = dataObj.optDouble(
-                        "kas_keliling",
-                        dataObj.optDouble("saldo_kas", dataObj.optDouble("saldo_kas_utama", dataObj.optDouble("total_saldo", 0.0)))
+                    val totalAnggota = dataObj.optInt("total_anggota", root.optInt("total_anggota", 0))
+                    val saldoKas = dataObj.optDouble(
+                        "saldo_kas",
+                        root.optDouble(
+                            "saldo_kas",
+                            dataObj.optDouble("saldo_kas_utama", root.optDouble("saldo_kas_utama", 0.0))
+                        )
                     )
-                    val saldoKas = kasKeliling
-                    val totalKas = dataObj.optDouble("total_kas", dataObj.optDouble("pemasukan_kas", 0.0))
-                    val pemasukanKas = dataObj.optDouble(
-                        "pemasukan_kas",
-                        dataObj.optDouble("total_pemasukan", dataObj.optDouble("total_kas", 0.0))
-                    )
-                    val pengeluaranKas = dataObj.optDouble(
-                        "pengeluaran_kas",
-                        dataObj.optDouble("total_pengeluaran", 0.0)
-                    )
-                    val totalAnniversary = dataObj.optDouble(
-                        "total_anniversary",
-                        dataObj.optDouble(
-                            "total_aniv",
+                    val kasAnniversary = dataObj.optDouble(
+                        "kas_anniversary",
+                        root.optDouble(
+                            "kas_anniversary",
                             dataObj.optDouble(
-                                "iuran_anniversary",
-                                dataObj.optDouble("iuran_aniv", 0.0)
+                                "total_anniversary",
+                                root.optDouble(
+                                    "total_anniversary",
+                                    dataObj.optDouble("total_aniv", root.optDouble("total_aniv", dataObj.optDouble("iuran_anniversary", dataObj.optDouble("iuran_aniv", 0.0))))
+                                )
                             )
                         )
                     )
-                    val targetPerAnggota = dataObj.optDouble("target_per_anggota", dataObj.optDouble("target_aniv", 0.0))
-                    val anggotaBelumBayar = dataObj.optInt(
-                        "anggota_belum_bayar",
-                        dataObj.optInt(
-                            "belum_anniversary",
-                            dataObj.optInt("belum_bayar_aniv", 0)
+
+                    // Prioritas parsing Saldo Kas Keliling: periksa saldo_kas_keliling, kas_keliling, saldo_akhir, saldo
+                    val rawSaldoKK = when {
+                        dataObj.has("saldo_kas_keliling") && !dataObj.isNull("saldo_kas_keliling") -> dataObj.opt("saldo_kas_keliling")
+                        root.has("saldo_kas_keliling") && !root.isNull("saldo_kas_keliling") -> root.opt("saldo_kas_keliling")
+                        dataObj.has("kas_keliling") && !dataObj.isNull("kas_keliling") -> dataObj.opt("kas_keliling")
+                        root.has("kas_keliling") && !root.isNull("kas_keliling") -> root.opt("kas_keliling")
+                        dataObj.has("saldo_akhir") && !dataObj.isNull("saldo_akhir") -> dataObj.opt("saldo_akhir")
+                        root.has("saldo_akhir") && !root.isNull("saldo_akhir") -> root.opt("saldo_akhir")
+                        dataObj.has("saldo") && !dataObj.isNull("saldo") -> dataObj.opt("saldo")
+                        root.has("saldo") && !root.isNull("saldo") -> root.opt("saldo")
+                        else -> null
+                    }
+                    val kasKeliling: Double? = when (rawSaldoKK) {
+                        is Number -> rawSaldoKK.toDouble()
+                        is String -> rawSaldoKK.replace("Rp", "", ignoreCase = true).replace(".", "").replace(",", ".").trim().toDoubleOrNull()
+                        else -> null
+                    }
+
+                    val saldoCicilan = dataObj.optDouble(
+                        "saldo_cicilan",
+                        root.optDouble(
+                            "saldo_cicilan",
+                            dataObj.optDouble("total_sisa_cicilan", root.optDouble("total_sisa_cicilan", 0.0))
                         )
                     )
-                    val belumKas = dataObj.optInt("belum_kas", dataObj.optInt("belum_bayar_kas", 0))
-                    val totalPengeluaran = pengeluaranKas
-                    val totalSisaCicilan = dataObj.optDouble("total_sisa_cicilan", 0.0)
-                    val totalHargaBarang = dataObj.optDouble("total_harga_barang", 0.0)
-                    val totalSudahDibayar = dataObj.optDouble("total_sudah_dibayar", 0.0)
-                    val anggotaMencicil = dataObj.optInt("anggota_mencicil", 0)
+                    val saldoKasKeliling = kasKeliling
+                    val pemasukanKasKeliling = dataObj.optDouble(
+                        "pemasukan_kas_keliling",
+                        root.optDouble(
+                            "pemasukan_kas_keliling",
+                            dataObj.optDouble("pemasukan_kas", root.optDouble("pemasukan_kas", dataObj.optDouble("total_pemasukan", root.optDouble("total_pemasukan", 0.0))))
+                        )
+                    )
+                    val pengeluaranKasKeliling = dataObj.optDouble(
+                        "pengeluaran_kas_keliling",
+                        root.optDouble(
+                            "pengeluaran_kas_keliling",
+                            dataObj.optDouble("pengeluaran_kas", root.optDouble("pengeluaran_kas", dataObj.optDouble("total_pengeluaran", root.optDouble("total_pengeluaran", 0.0))))
+                        )
+                    )
+
+                    val totalKas = dataObj.optDouble("total_kas", root.optDouble("total_kas", saldoKas))
+                    val pemasukanKas = pemasukanKasKeliling
+                    val pengeluaranKas = pengeluaranKasKeliling
+                    val totalAnniversary = kasAnniversary
+                    val targetPerAnggota = dataObj.optDouble("target_per_anggota", root.optDouble("target_per_anggota", dataObj.optDouble("target_aniv", 0.0)))
+                    val targetKas = dataObj.optDouble("target_kas", root.optDouble("target_kas", 0.0))
+                    val anggotaBelumBayar = dataObj.optInt(
+                        "anggota_belum_bayar",
+                        root.optInt(
+                            "anggota_belum_bayar",
+                            dataObj.optInt("belum_anniversary", dataObj.optInt("belum_bayar_aniv", 0))
+                        )
+                    )
+                    val belumKas = dataObj.optInt("belum_kas", root.optInt("belum_kas", dataObj.optInt("belum_bayar_kas", 0)))
+                    val totalPengeluaran = dataObj.optDouble("total_pengeluaran", root.optDouble("total_pengeluaran", pengeluaranKasKeliling))
+                    val totalSisaCicilan = saldoCicilan
+                    val totalHargaBarang = dataObj.optDouble("total_harga_barang", root.optDouble("total_harga_barang", 0.0))
+                    val totalSudahDibayar = dataObj.optDouble("total_sudah_dibayar", root.optDouble("total_sudah_dibayar", 0.0))
+                    val anggotaMencicil = dataObj.optInt("anggota_mencicil", root.optInt("anggota_mencicil", 0))
 
                     val parsedData = com.example.network.DashboardData(
                         total_anggota = totalAnggota,
                         total_kas = totalKas,
                         total_anniversary = totalAnniversary,
+                        kas_anniversary = kasAnniversary,
                         total_aniv = totalAnniversary,
                         iuran_anniversary = totalAnniversary,
                         iuran_aniv = totalAnniversary,
@@ -587,9 +631,13 @@ class MainActivity : ComponentActivity() {
                         target_aniv = targetPerAnggota,
                         anggota_belum_bayar = anggotaBelumBayar,
                         saldo_kas = saldoKas,
+                        saldo_kas_keliling = saldoKasKeliling,
                         kas_keliling = kasKeliling,
+                        saldo_cicilan = saldoCicilan,
                         pemasukan_kas = pemasukanKas,
+                        pemasukan_kas_keliling = pemasukanKasKeliling,
                         pengeluaran_kas = pengeluaranKas,
+                        pengeluaran_kas_keliling = pengeluaranKasKeliling,
                         belum_kas = belumKas,
                         belum_bayar_kas = belumKas,
                         belum_anniversary = anggotaBelumBayar,

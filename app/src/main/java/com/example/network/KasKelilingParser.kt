@@ -33,20 +33,42 @@ object KasKelilingParser {
                 arrayToParse = JSONArray(trimmed)
             } else if (trimmed.startsWith("{")) {
                 val rootObj = JSONObject(trimmed)
+
+                // 1. Ekstrak langsung dari root object jika ada
+                if (rootObj.has("total_pemasukan") && !rootObj.isNull("total_pemasukan")) {
+                    totalPemasukan = parseDoubleSafe(rootObj.opt("total_pemasukan"))
+                }
+                if (rootObj.has("total_pengeluaran") && !rootObj.isNull("total_pengeluaran")) {
+                    totalPengeluaran = parseDoubleSafe(rootObj.opt("total_pengeluaran"))
+                }
+                if (rootObj.has("saldo_kas_keliling") && !rootObj.isNull("saldo_kas_keliling")) {
+                    saldoKasKeliling = parseDoubleSafe(rootObj.opt("saldo_kas_keliling"))
+                } else if (rootObj.has("saldo") && !rootObj.isNull("saldo")) {
+                    saldoKasKeliling = parseDoubleSafe(rootObj.opt("saldo"))
+                } else if (rootObj.has("saldo_akhir") && !rootObj.isNull("saldo_akhir")) {
+                    saldoKasKeliling = parseDoubleSafe(rootObj.opt("saldo_akhir"))
+                }
+
                 if (rootObj.has("data") && !rootObj.isNull("data")) {
                     val dataVal = rootObj.get("data")
                     if (dataVal is JSONArray) {
                         arrayToParse = dataVal
                     } else if (dataVal is JSONObject) {
                         // Check if unified response object with summary + transaksi array
-                        if (dataVal.has("total_pemasukan")) {
+                        if (totalPemasukan == null && dataVal.has("total_pemasukan")) {
                             totalPemasukan = parseDoubleSafe(dataVal.opt("total_pemasukan"))
                         }
-                        if (dataVal.has("total_pengeluaran")) {
+                        if (totalPengeluaran == null && dataVal.has("total_pengeluaran")) {
                             totalPengeluaran = parseDoubleSafe(dataVal.opt("total_pengeluaran"))
                         }
-                        if (dataVal.has("saldo_kas_keliling")) {
-                            saldoKasKeliling = parseDoubleSafe(dataVal.opt("saldo_kas_keliling"))
+                        if (saldoKasKeliling == null) {
+                            if (dataVal.has("saldo_kas_keliling")) {
+                                saldoKasKeliling = parseDoubleSafe(dataVal.opt("saldo_kas_keliling"))
+                            } else if (dataVal.has("saldo")) {
+                                saldoKasKeliling = parseDoubleSafe(dataVal.opt("saldo"))
+                            } else if (dataVal.has("saldo_akhir")) {
+                                saldoKasKeliling = parseDoubleSafe(dataVal.opt("saldo_akhir"))
+                            }
                         }
 
                         if (dataVal.has("transaksi") && !dataVal.isNull("transaksi")) {

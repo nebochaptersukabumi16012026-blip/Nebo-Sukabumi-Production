@@ -202,7 +202,8 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     
     // Sinkronisasi Nominal Kas Anniversary dengan Detail Iuran Anniversary
     val sumAnivFromMembers = anggotaList.sumOf { it.iuranAniv }
-    val apiAniv = dashboardData?.total_anniversary 
+    val apiAniv = dashboardData?.kas_anniversary
+        ?: dashboardData?.total_anniversary 
         ?: dashboardData?.iuran_anniversary 
         ?: dashboardData?.total_aniv 
         ?: dashboardData?.iuran_aniv 
@@ -217,7 +218,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     }
     val totalAnivStr = formatRupiah(actualAniv)
     
-    val saldoKasKelilingFinalCalculated = dashboardData?.saldo_kas ?: saldoKasKelilingFinal
+    val saldoKasKelilingFinalCalculated = dashboardData?.saldo_kas_keliling ?: dashboardData?.kas_keliling ?: saldoKasKelilingFinal
     val totalKasKelilingSaldoStr = formatRupiah(saldoKasKelilingFinalCalculated)
 
 
@@ -674,19 +675,19 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
             // 2. KARTU KEUANGAN 2 KOLOM MENYAMPING (GRID 2X2 TERPISAH)
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // BARIS 1: KAS KELILING (KIRI) | KAS ANNIVERSARY (KANAN)
+                    // BARIS 1: SALDO KAS (KIRI) | KAS ANNIVERSARY (KANAN)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Card 1: KAS KELILING (KIRI)
-                        val kasKelilingSaldo = dashboardData?.kas_keliling ?: dashboardData?.saldo_kas ?: saldoKasKelilingFinal
-                        val kasKelilingNominalStr = formatRupiah(kasKelilingSaldo)
+                        // Card 1: SALDO KAS (KIRI)
+                        val saldoKasVal = dashboardData?.saldo_kas ?: dashboardData?.kas_utama?.saldo_kas ?: saldoKasAkhirUtama
+                        val saldoKasNominalStr = formatRupiah(saldoKasVal)
                         Card(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .clickable { onNavigateFinance("kas_keliling") },
+                                .clickable { onNavigateFinance("kas_utama") },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -697,7 +698,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                     .padding(14.dp)
                             ) {
                                 Text(
-                                    text = "KAS KELILING",
+                                    text = "SALDO KAS",
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp
@@ -711,7 +712,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                 )
 
                                 Text(
-                                    text = kasKelilingNominalStr,
+                                    text = saldoKasNominalStr,
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
                                     color = Color(0xFF4ADE80)
                                 )
@@ -756,18 +757,31 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         }
                     }
 
-                    // BARIS 2: PEMASUKAN KAS (KIRI) | PENGELUARAN KAS (KANAN)
+                    // BARIS 2: KAS KELILING (KIRI) | SALDO CICILAN (KANAN)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Card 3: TOTAL PEMASUKAN (KIRI)
-                        val pemasukanNominalStr = formatRupiah(dashboardData?.pemasukan_kas ?: dashboardData?.total_kas ?: grandTotalPemasukanKK)
+                        // Card 3: SALDO KAS KELILING (KIRI) - Satu Sumber Data dengan Halaman Kas Keliling Bulanan
+                        val syncErrorVal by viewModel.syncError.collectAsState()
+                        val kasKelilingVal: Double? = when {
+                            kasSummary?.saldo_kas_keliling != null -> kasSummary!!.saldo_kas_keliling
+                            kasKelilingList.isNotEmpty() -> saldoKasKelilingFinal
+                            dashboardData?.saldo_kas_keliling != null -> dashboardData!!.saldo_kas_keliling
+                            dashboardData?.kas_keliling != null -> dashboardData!!.kas_keliling
+                            else -> null
+                        }
+                        val isKasKelilingError = kasKelilingVal == null && syncErrorVal != null
+                        val kasKelilingNominalStr = when {
+                            kasKelilingVal != null -> formatRupiah(kasKelilingVal)
+                            isKasKelilingError -> "Gagal mengambil saldo Kas Keliling"
+                            else -> "Memuat..."
+                        }
                         Card(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .clickable { onNavigateFinance("laporan") },
+                                .clickable { onNavigateFinance("kas_keliling") },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -778,7 +792,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                     .padding(14.dp)
                             ) {
                                 Text(
-                                    text = "TOTAL PEMASUKAN",
+                                    text = "SALDO KAS KELILING",
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp
@@ -792,20 +806,24 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                 )
 
                                 Text(
-                                    text = pemasukanNominalStr,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
-                                    color = Color(0xFF38BDF8)
+                                    text = kasKelilingNominalStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold, 
+                                        fontSize = if (isKasKelilingError) 11.sp else 16.sp
+                                    ),
+                                    color = if (isKasKelilingError) Color(0xFFF87171) else Color(0xFF38BDF8)
                                 )
                             }
                         }
 
-                        // Card 4: TOTAL PENGELUARAN (KANAN)
-                        val pengeluaranNominalStr = formatRupiah(dashboardData?.pengeluaran_kas ?: dashboardData?.totalPengeluaran ?: grandTotalPengeluaranKK)
+                        // Card 4: SALDO CICILAN (KANAN)
+                        val saldoCicilanVal = dashboardData?.saldo_cicilan ?: dashboardData?.total_sisa_cicilan ?: actualSisaCicilan
+                        val saldoCicilanNominalStr = formatRupiah(saldoCicilanVal)
                         Card(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .clickable { onNavigateFinance("pengeluaran_kas") },
+                                .clickable { onNavigateFinance("daftar_cicilan_anggota") },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -816,7 +834,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                     .padding(14.dp)
                             ) {
                                 Text(
-                                    text = "TOTAL PENGELUARAN",
+                                    text = "SALDO CICILAN",
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp
@@ -830,7 +848,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                 )
 
                                 Text(
-                                    text = pengeluaranNominalStr,
+                                    text = saldoCicilanNominalStr,
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
                                     color = Color(0xFFF87171)
                                 )
