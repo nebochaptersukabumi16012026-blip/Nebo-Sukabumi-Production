@@ -6,6 +6,9 @@ header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
+header("Cache-Control: no-cache, no-store, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -68,9 +71,7 @@ try {
         }
     } else {
         // Query dari tabel anggota (master anggota & tagihan cicilan)
-        // Dukung baik nama kolom snake_case (harga_barang) maupun camelCase (hargaBarang)
-        $whereClause = "(COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0) > 0 
-                         OR COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0)";
+        $whereClause = "((COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0) > 0) OR COALESCE(sisa_cicilan, 0) > 0)";
         $params = array();
         if ($isMemberOnly) {
             $whereClause .= " AND nra = ?";
@@ -78,12 +79,12 @@ try {
         }
 
         $query = "SELECT id, nama, nra, 
-                         COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) AS harga_barang, 
-                         COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0) AS sudah_dibayar, 
+                         COALESCE(harga_barang, 0) AS harga_barang, 
+                         COALESCE(total_cicilan, 0) AS sudah_dibayar, 
                          CASE 
-                             WHEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0 
-                                  THEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) 
-                             ELSE (COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)) 
+                             WHEN COALESCE(sisa_cicilan, 0) > 0 
+                                  THEN COALESCE(sisa_cicilan, 0) 
+                             ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) 
                          END AS sisa_cicilan, 
                          COALESCE(cicilan_per_bulan, 0) AS cicilan_per_bulan 
                   FROM anggota 
@@ -95,11 +96,11 @@ try {
 
         // Rekapitulasi dari tabel anggota
         $queryRekap = "SELECT 
-                          COALESCE(SUM(COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0)), 0) AS total_harga_barang,
-                          COALESCE(SUM(COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)), 0) AS total_sudah_dibayar,
-                          COALESCE(SUM(CASE WHEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) > 0 
-                                            THEN COALESCE(NULLIF(sisa_cicilan, 0), NULLIF(sisaCicilan, 0), 0) 
-                                            ELSE (COALESCE(NULLIF(harga_barang, 0), NULLIF(hargaBarang, 0), 0) - COALESCE(NULLIF(total_cicilan, 0), NULLIF(totalCicilan, 0), 0)) END), 0) AS total_sisa_cicilan,
+                          COALESCE(SUM(COALESCE(harga_barang, 0)), 0) AS total_harga_barang,
+                          COALESCE(SUM(COALESCE(total_cicilan, 0)), 0) AS total_sudah_dibayar,
+                          COALESCE(SUM(CASE WHEN COALESCE(sisa_cicilan, 0) > 0 
+                                            THEN COALESCE(sisa_cicilan, 0) 
+                                            ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) END), 0) AS total_sisa_cicilan,
                           COUNT(DISTINCT nra) AS anggota_mencicil
                        FROM anggota 
                        WHERE $whereClause";

@@ -1016,35 +1016,15 @@ fun DaftarCicilanAnggotaScreen(navController: NavController, viewModel: Communit
     val anggotaList by viewModel.allAnggota.collectAsState()
     val dashboardData by viewModel.dashboardData.collectAsState()
     val apiCicilanList by viewModel.cicilanAktifList.collectAsState()
+    val cicilanApiError by viewModel.cicilanApiError.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.fetchCicilanAktif()
     }
 
-    // Unified list of active installments (Full Read Access for all roles including ANGGOTA and GUEST)
-    val cicilanDisplayList = remember(apiCicilanList, anggotaList) {
-        if (apiCicilanList.isNotEmpty()) {
-            apiCicilanList.filter {
-                it.sisa_cicilan > 0.0
-            }
-        } else {
-            anggotaList.filter {
-                val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - it.totalCicilan)
-                sisa > 0.0
-            }.map {
-                val sudahBayar = it.totalCicilan
-                val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - sudahBayar)
-                com.example.network.CicilanAktifItem(
-                    id = it.id,
-                    nama = it.nama,
-                    nra = it.nra.ifBlank { "-" },
-                    harga_barang = it.hargaBarang,
-                    sudah_dibayar = sudahBayar,
-                    sisa_cicilan = sisa,
-                    cicilan_per_bulan = it.cicilanPerBulan
-                )
-            }
-        }
+    // Direct list of active installments from live API cPanel (Single Source of Truth)
+    val cicilanDisplayList = remember(apiCicilanList) {
+        apiCicilanList.filter { it.sisa_cicilan > 0.0 }
     }
 
     val totalSisaCicilan = cicilanDisplayList.sumOf { it.sisa_cicilan }
@@ -1125,6 +1105,29 @@ fun DaftarCicilanAnggotaScreen(navController: NavController, viewModel: Communit
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 32.dp, top = 8.dp)
             ) {
+                if (cicilanApiError != null) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF7F1D1D))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFCA5A5))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Gagal memuat data dari server cPanel: $cicilanApiError",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+
                 item {
                     DarkGradientCard(modifier = Modifier.fillMaxWidth()) {
                         Row(

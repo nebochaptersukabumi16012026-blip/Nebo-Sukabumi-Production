@@ -128,13 +128,18 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     private val _cicilanAktifList = MutableStateFlow<List<com.example.network.CicilanAktifItem>>(emptyList())
     val cicilanAktifList: StateFlow<List<com.example.network.CicilanAktifItem>> = _cicilanAktifList.asStateFlow()
 
+    private val _cicilanApiError = MutableStateFlow<String?>(null)
+    val cicilanApiError: StateFlow<String?> = _cicilanApiError.asStateFlow()
+
     fun fetchCicilanAktif() {
         viewModelScope.launch {
             try {
+                _cicilanApiError.value = null
                 val list = repository.getDaftarCicilanAktif()
                 _cicilanAktifList.value = list
             } catch (e: Exception) {
-                // Ignore fallback handles it
+                _cicilanApiError.value = e.message ?: "Gagal mengambil data cicilan dari server"
+                android.util.Log.e("CICILAN_VM", "fetchCicilanAktif error: ${e.message}")
             }
         }
     }

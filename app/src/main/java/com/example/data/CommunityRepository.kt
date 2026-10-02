@@ -560,36 +560,14 @@ class CommunityRepository(
     }
 
     suspend fun getDaftarCicilanAktif(): List<CicilanAktifItem> {
-        return try {
-            val response = ApiClient.apiService.getDaftarCicilanAktif()
-            if (response.isSuccessful && response.body()?.data != null) {
-                val list = response.body()!!.data!!
-                if (list.isNotEmpty()) list else getDaftarCicilanAktifFallback()
-            } else {
-                getDaftarCicilanAktifFallback()
-            }
-        } catch (e: Exception) {
-            getDaftarCicilanAktifFallback()
+        val response = ApiClient.apiService.getDaftarCicilanAktif()
+        if (response.isSuccessful && response.body()?.data != null) {
+            return response.body()!!.data!!
+        } else {
+            val errorMsg = response.errorBody()?.string() ?: response.message()
+            Log.e("CICILAN_API", "getDaftarCicilanAktif error HTTP ${response.code()}: $errorMsg")
+            throw Exception(if (errorMsg.isNotBlank()) errorMsg else "Gagal mengambil data cicilan dari server (HTTP ${response.code()})")
         }
-    }
-
-    private fun getDaftarCicilanAktifFallback(): List<CicilanAktifItem> {
-        return _allAnggota.value.filter {
-            val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - it.totalCicilan)
-            sisa > 0.0
-        }.map {
-            val sudahBayar = it.totalCicilan
-            val sisa = if (it.sisaCicilan > 0) it.sisaCicilan else (it.hargaBarang - sudahBayar)
-            CicilanAktifItem(
-                id = it.id,
-                nama = it.nama,
-                nra = it.nra.ifBlank { "-" },
-                harga_barang = it.hargaBarang,
-                sudah_dibayar = sudahBayar,
-                sisa_cicilan = sisa,
-                cicilan_per_bulan = it.cicilanPerBulan
-            )
-        }.sortedByDescending { it.sisa_cicilan }
     }
 
     suspend fun clearAllData() {

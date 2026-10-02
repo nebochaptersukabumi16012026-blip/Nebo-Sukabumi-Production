@@ -191,9 +191,20 @@ object ApiClient {
         }
     }
 
+    private val noCacheInterceptor = okhttp3.Interceptor { chain ->
+        val originalRequest = chain.request()
+        val requestWithNoCache = originalRequest.newBuilder()
+            .header("Cache-Control", "no-cache, no-store, must-revalidate")
+            .header("Pragma", "no-cache")
+            .header("Expires", "0")
+            .build()
+        chain.proceed(requestWithNoCache)
+    }
+
     private val client = OkHttpClient.Builder()
         .followRedirects(false)
         .followSslRedirects(false)
+        .addInterceptor(noCacheInterceptor)
         .addInterceptor(jsonValidationInterceptor)
         .addInterceptor(RetryInterceptor(1))
         .addInterceptor(customLoggingInterceptor)
