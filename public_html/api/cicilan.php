@@ -104,7 +104,7 @@ switch ($method) {
                     $stmt = $conn->prepare("DELETE FROM cicilan WHERE id = ?");
                     $stmt->execute(array($data->id));
                     
-                    // JANGAN sentuh saldo_akumulasi / dashboard utama
+                    recalculateAnggotaCicilan($conn, $anggota_id);
                     $conn->commit();
                     
                     echo json_encode(array("status" => "success", "message" => "Riwayat berhasil dihapus"));

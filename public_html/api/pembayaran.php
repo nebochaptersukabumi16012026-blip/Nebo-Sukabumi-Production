@@ -122,9 +122,31 @@ switch ($method) {
         if (!empty($data->id)) {
             try {
                 $conn->beginTransaction();
+                $stmt_get = $conn->prepare("SELECT anggotaId, jenisPembayaran, nominal FROM pembayaran WHERE id = ?");
+                $stmt_get->execute(array($data->id));
+                $row_p = $stmt_get->fetch(PDO::FETCH_ASSOC);
+
                 $stmt = $conn->prepare("DELETE FROM pembayaran WHERE id = ?");
                 $stmt->execute(array($data->id));
-                // KUNCI LOGIKA UTAMA: DILARANG KERAS mengurangi atau mengubah angka di tabel saldo_akumulasi
+
+                if ($row_p && !empty($row_p['anggotaId'])) {
+                    $aid = $row_p['anggotaId'];
+                    $jp = strtoupper(trim($row_p['jenisPembayaran'] ?? ''));
+                    if ($jp === 'CICILAN') {
+                        $stmt_del_c = $conn->prepare("DELETE FROM cicilan WHERE anggota_id = ? AND nominal = ? LIMIT 1");
+                        $stmt_del_c->execute(array($aid, $row_p['nominal']));
+                        recalculateAnggotaCicilan($conn, $aid);
+                    } elseif ($jp === 'KAS') {
+                        $stmt_del_rk = $conn->prepare("DELETE FROM riwayat_kas WHERE id_anggota = ? AND nominal = ? LIMIT 1");
+                        $stmt_del_rk->execute(array($aid, $row_p['nominal']));
+                        recalculateAnggotaKas($conn, $aid);
+                    } elseif ($jp === 'ANIV') {
+                        $stmt_del_ia = $conn->prepare("DELETE FROM iuran_anniversary WHERE anggota_id = ? AND nominal = ? LIMIT 1");
+                        $stmt_del_ia->execute(array($aid, $row_p['nominal']));
+                        recalculateAnggotaAniv($conn, $aid);
+                    }
+                }
+
                 $conn->commit();
                 echo json_encode(array("status" => "success", "message" => "Pembayaran berhasil dihapus"));
             } catch (Throwable $e) {

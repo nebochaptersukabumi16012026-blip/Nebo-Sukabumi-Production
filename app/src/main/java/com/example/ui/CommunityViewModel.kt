@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -9,7 +10,10 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -2314,18 +2318,68 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         return file
     }
 
-    fun saveLaporanCicilanPdf(context: Context, onResult: (String?) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val file = generateLaporanCicilanFile(context)
+    private fun savePdfToPublicDownloads(context: Context, pdfFile: File, fileName: String): String? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return null
+
+                resolver.openOutputStream(uri)?.use { output ->
+                    pdfFile.inputStream().use { input ->
+                        input.copyTo(output)
+                    }
+                }
+                fileName
+            } else {
                 val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val destFile = File(downloadsDir, "Laporan_Data_Cicilan_${System.currentTimeMillis()}.pdf")
-                file.inputStream().use { input ->
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                val destFile = File(downloadsDir, fileName)
+                pdfFile.inputStream().use { input ->
                     destFile.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
-                onResult(destFile.absolutePath)
+                destFile.absolutePath
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun sharePdfFile(context: Context, file: File, chooserTitle: String) {
+        viewModelScope.launch(Dispatchers.Main) {
+            try {
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, chooserTitle).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(chooser)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Gagal membagikan PDF: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun saveLaporanCicilanPdf(context: Context, onResult: (String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = generateLaporanCicilanFile(context)
+                val fileName = "Laporan_Data_Cicilan_${System.currentTimeMillis()}.pdf"
+                val savedPath = savePdfToPublicDownloads(context, file, fileName)
+                onResult(savedPath)
             } catch (e: Exception) {
                 e.printStackTrace()
                 onResult(null)
@@ -2337,15 +2391,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateLaporanCicilanFile(context)
-                viewModelScope.launch(Dispatchers.Main) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Bagikan PDF"))
-                }
+                sharePdfFile(context, file, "Bagikan PDF Cicilan")
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2539,14 +2585,9 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateLaporanKasFile(context)
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val destFile = File(downloadsDir, "Laporan_Uang_Kas_${System.currentTimeMillis()}.pdf")
-                file.inputStream().use { input ->
-                    destFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                onResult(destFile.absolutePath)
+                val fileName = "Laporan_Uang_Kas_${System.currentTimeMillis()}.pdf"
+                val savedPath = savePdfToPublicDownloads(context, file, fileName)
+                onResult(savedPath)
             } catch (e: Exception) {
                 e.printStackTrace()
                 onResult(null)
@@ -2662,15 +2703,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateLaporanKasFile(context)
-                viewModelScope.launch(Dispatchers.Main) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Bagikan PDF Uang Kas"))
-                }
+                sharePdfFile(context, file, "Bagikan PDF Uang Kas")
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2755,15 +2788,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateLaporanKelilingFile(context)
-                viewModelScope.launch(Dispatchers.Main) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Bagikan PDF Kas Keliling"))
-                }
+                sharePdfFile(context, file, "Bagikan PDF Kas Keliling")
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2774,15 +2799,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateLaporanAnivFile(context)
-                viewModelScope.launch(Dispatchers.Main) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Bagikan PDF Kas Anniversary"))
-                }
+                sharePdfFile(context, file, "Bagikan PDF Kas Anniversary")
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2793,14 +2810,9 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateRiwayatPembayaranPdfFile(context)
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val destFile = File(downloadsDir, "Riwayat_Pembayaran_Cicilan_${System.currentTimeMillis()}.pdf")
-                file.inputStream().use { input ->
-                    destFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                onResult(destFile.absolutePath)
+                val fileName = "Riwayat_Pembayaran_Cicilan_${System.currentTimeMillis()}.pdf"
+                val savedPath = savePdfToPublicDownloads(context, file, fileName)
+                onResult(savedPath)
             } catch (e: Exception) {
                 e.printStackTrace()
                 onResult(null)
@@ -2812,15 +2824,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateRiwayatPembayaranPdfFile(context)
-                viewModelScope.launch(Dispatchers.Main) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Bagikan PDF"))
-                }
+                sharePdfFile(context, file, "Bagikan PDF Riwayat Pembayaran")
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -3020,15 +3024,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateLaporanBulananPdfFile(context, year, month)
-                viewModelScope.launch(Dispatchers.Main) {
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Bagikan PDF Laporan Bulanan"))
-                }
+                sharePdfFile(context, file, "Bagikan PDF Laporan Bulanan")
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -3039,14 +3035,9 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val file = generateLaporanBulananPdfFile(context, year, month)
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val destFile = File(downloadsDir, "Laporan_Bulanan_${year}_${month}_${System.currentTimeMillis()}.pdf")
-                file.inputStream().use { input ->
-                    destFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                onResult(destFile.absolutePath)
+                val fileName = "Laporan_Bulanan_${year}_${month}_${System.currentTimeMillis()}.pdf"
+                val savedPath = savePdfToPublicDownloads(context, file, fileName)
+                onResult(savedPath)
             } catch (e: Exception) {
                 e.printStackTrace()
                 onResult(null)

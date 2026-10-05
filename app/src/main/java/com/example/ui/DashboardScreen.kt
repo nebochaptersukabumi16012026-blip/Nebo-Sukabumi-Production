@@ -757,102 +757,57 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         }
                     }
 
-                    // BARIS 2: KAS KELILING (KIRI) | SALDO CICILAN (KANAN)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    // BARIS 2: KAS KELILING
+                    val syncErrorVal by viewModel.syncError.collectAsState()
+                    val kasKelilingVal: Double? = when {
+                        kasSummary?.saldo_kas_keliling != null -> kasSummary!!.saldo_kas_keliling
+                        kasKelilingList.isNotEmpty() -> saldoKasKelilingFinal
+                        dashboardData?.saldo_kas_keliling != null -> dashboardData!!.saldo_kas_keliling
+                        dashboardData?.kas_keliling != null -> dashboardData!!.kas_keliling
+                        else -> null
+                    }
+                    val isKasKelilingError = kasKelilingVal == null && syncErrorVal != null
+                    val kasKelilingNominalStr = when {
+                        kasKelilingVal != null -> formatRupiah(kasKelilingVal)
+                        isKasKelilingError -> "Gagal mengambil saldo Kas Keliling"
+                        else -> "Memuat..."
+                    }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onNavigateFinance("kas_keliling") },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
-                        // Card 3: SALDO KAS KELILING (KIRI) - Satu Sumber Data dengan Halaman Kas Keliling Bulanan
-                        val syncErrorVal by viewModel.syncError.collectAsState()
-                        val kasKelilingVal: Double? = when {
-                            kasSummary?.saldo_kas_keliling != null -> kasSummary!!.saldo_kas_keliling
-                            kasKelilingList.isNotEmpty() -> saldoKasKelilingFinal
-                            dashboardData?.saldo_kas_keliling != null -> dashboardData!!.saldo_kas_keliling
-                            dashboardData?.kas_keliling != null -> dashboardData!!.kas_keliling
-                            else -> null
-                        }
-                        val isKasKelilingError = kasKelilingVal == null && syncErrorVal != null
-                        val kasKelilingNominalStr = when {
-                            kasKelilingVal != null -> formatRupiah(kasKelilingVal)
-                            isKasKelilingError -> "Gagal mengambil saldo Kas Keliling"
-                            else -> "Memuat..."
-                        }
-                        Card(
+                        Column(
                             modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable { onNavigateFinance("kas_keliling") },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                                .fillMaxWidth()
+                                .padding(14.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp)
-                            ) {
-                                Text(
-                                    text = "SALDO KAS KELILING",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = Color(0xFF94A3B8)
-                                )
+                            Text(
+                                text = "SALDO KAS KELILING",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                ),
+                                color = Color(0xFF94A3B8)
+                            )
 
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                    color = Color.White.copy(alpha = 0.1f)
-                                )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = Color.White.copy(alpha = 0.1f)
+                            )
 
-                                Text(
-                                    text = kasKelilingNominalStr,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.ExtraBold, 
-                                        fontSize = if (isKasKelilingError) 11.sp else 16.sp
-                                    ),
-                                    color = if (isKasKelilingError) Color(0xFFF87171) else Color(0xFF38BDF8)
-                                )
-                            }
-                        }
-
-                        // Card 4: SALDO CICILAN (KANAN)
-                        val saldoCicilanVal = dashboardData?.saldo_cicilan ?: dashboardData?.total_sisa_cicilan ?: actualSisaCicilan
-                        val saldoCicilanNominalStr = formatRupiah(saldoCicilanVal)
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable { onNavigateFinance("daftar_cicilan_anggota") },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp)
-                            ) {
-                                Text(
-                                    text = "SALDO CICILAN",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = Color(0xFF94A3B8)
-                                )
-
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                    color = Color.White.copy(alpha = 0.1f)
-                                )
-
-                                Text(
-                                    text = saldoCicilanNominalStr,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 16.sp),
-                                    color = Color(0xFFF87171)
-                                )
-                            }
+                            Text(
+                                text = kasKelilingNominalStr,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold, 
+                                    fontSize = if (isKasKelilingError) 11.sp else 16.sp
+                                ),
+                                color = if (isKasKelilingError) Color(0xFFF87171) else Color(0xFF38BDF8)
+                            )
                         }
                     }
                 }
@@ -1715,23 +1670,29 @@ fun shareLaporanKeuanganWhatsApp(
 https://nebosukabumi.net/api/cetak_pdf_keuangan.php
 """.trimIndent()
 
-    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+    val baseIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(android.content.Intent.EXTRA_TEXT, message)
-        setPackage("com.whatsapp")
     }
 
+    val pm = context.packageManager
+    val isWaInstalled = try { pm.getPackageInfo("com.whatsapp", 0); true } catch (e: Exception) { false }
+    val isWaBizInstalled = try { pm.getPackageInfo("com.whatsapp.w4b", 0); true } catch (e: Exception) { false }
+
     try {
-        context.startActivity(intent)
+        if (isWaInstalled) {
+            val waIntent = android.content.Intent(baseIntent).apply { setPackage("com.whatsapp") }
+            context.startActivity(waIntent)
+        } else if (isWaBizInstalled) {
+            val waBizIntent = android.content.Intent(baseIntent).apply { setPackage("com.whatsapp.w4b") }
+            context.startActivity(waBizIntent)
+        } else {
+            val chooser = android.content.Intent.createChooser(baseIntent, "Bagikan Laporan Keuangan")
+            context.startActivity(chooser)
+        }
     } catch (e: Exception) {
         try {
-            val chooser = android.content.Intent.createChooser(
-                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_TEXT, message)
-                },
-                "Bagikan Laporan Keuangan"
-            )
+            val chooser = android.content.Intent.createChooser(baseIntent, "Bagikan Laporan Keuangan")
             context.startActivity(chooser)
         } catch (ex: Exception) {
             Toast.makeText(context, "Aplikasi untuk berbagi tidak ditemukan", Toast.LENGTH_SHORT).show()

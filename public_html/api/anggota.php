@@ -1,6 +1,7 @@
 <?php
 // anggota.php
 include_once 'config.php';
+include_once 'sync_helper.php';
 $method = $_SERVER['REQUEST_METHOD'];
 $data = json_decode(file_get_contents("php://input"));
 
@@ -149,6 +150,8 @@ switch ($method) {
                 $stmtCamel = $conn->prepare("UPDATE anggota SET hargaBarang = ?, sisaCicilan = ?, namaBarang = ?, lamaCicilan = ?, totalTagihan = ? WHERE id = ?");
                 $stmtCamel->execute(array($hargaBarangVal, $sisaCicilanVal, $namaBarangVal, $lamaCicilanVal, $totalTagihanVal, $data->id));
             } catch (Exception $e) {}
+
+            recalculateAllFields($conn, $data->id);
 
             echo json_encode(array("status" => "success", "message" => "Data anggota berhasil diupdate"));
         } else {
