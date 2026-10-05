@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
         // Auto-refresh session status verifikasi akun & role terbaru dari cPanel saat startup
         fetchDashboardData()
         autoRefreshSession()
+        setupXmlSyncListeners()
 
         setContent {
             MaterialTheme(
@@ -601,7 +602,17 @@ class MainActivity : ComponentActivity() {
 
                     val totalKas = dataObj.optDouble("total_kas", root.optDouble("total_kas", saldoKas))
                     val pemasukanKas = pemasukanKasKeliling
-                    val pengeluaranKas = pengeluaranKasKeliling
+                    // 4. Card 4 (Kanan Bawah): PENGELUARAN KAS -> "pengeluaran_kas" / "total_pengeluaran"
+                    val pengeluaranKas = dataObj.optDouble(
+                        "pengeluaran_kas",
+                        root.optDouble(
+                            "pengeluaran_kas",
+                            dataObj.optDouble(
+                                "total_pengeluaran",
+                                root.optDouble("total_pengeluaran", pengeluaranKasKeliling)
+                            )
+                        )
+                    )
                     val totalAnniversary = kasAnniversary
                     val targetPerAnggota = dataObj.optDouble("target_per_anggota", root.optDouble("target_per_anggota", dataObj.optDouble("target_aniv", 0.0)))
                     val targetKas = dataObj.optDouble("target_kas", root.optDouble("target_kas", 0.0))
@@ -613,7 +624,7 @@ class MainActivity : ComponentActivity() {
                         )
                     )
                     val belumKas = dataObj.optInt("belum_kas", root.optInt("belum_kas", dataObj.optInt("belum_bayar_kas", 0)))
-                    val totalPengeluaran = dataObj.optDouble("total_pengeluaran", root.optDouble("total_pengeluaran", pengeluaranKasKeliling))
+                    val totalPengeluaran = dataObj.optDouble("total_pengeluaran", root.optDouble("total_pengeluaran", pengeluaranKas))
                     val totalSisaCicilan = saldoCicilan
                     val totalHargaBarang = dataObj.optDouble("total_harga_barang", root.optDouble("total_harga_barang", 0.0))
                     val totalSudahDibayar = dataObj.optDouble("total_sudah_dibayar", root.optDouble("total_sudah_dibayar", 0.0))
@@ -650,6 +661,12 @@ class MainActivity : ComponentActivity() {
                     )
 
                     withContext(Dispatchers.Main) {
+                        // Pemetaan (binding) langsung data JSON API ke 4 Card Laporan Rekapitulasi Kas (activity_main.xml Views)
+                        findViewById<android.widget.TextView>(R.id.tvSaldoKas)?.text = formatRupiah(saldoKas)
+                        findViewById<android.widget.TextView>(R.id.tvKasAnniversary)?.text = formatRupiah(kasAnniversary)
+                        findViewById<android.widget.TextView>(R.id.tvKasKeliling)?.text = formatRupiah(kasKeliling ?: 0.0)
+                        findViewById<android.widget.TextView>(R.id.tvSaldoCicilan)?.text = formatRupiah(pengeluaranKas)
+
                         viewModel.setDashboardData(parsedData)
                         onComplete?.invoke(parsedData)
                     }
@@ -658,6 +675,25 @@ class MainActivity : ComponentActivity() {
                 e.printStackTrace()
             }
         }
+    }
+
+    /**
+     * Memperbarui pemetaan (binding) data JSON API pada 4 Card Laporan Rekapitulasi Kas di MainActivity:
+     * 1. Card 1 (Kiri Atas): SALDO KAS -> Key "saldo_kas" -> tvSaldoKas
+     * 2. Card 2 (Kanan Atas): KAS ANNIVERSARY -> Key "kas_anniversary" -> tvKasAnniversary
+     * 3. Card 3 (Kiri Bawah): KAS KELILING -> Key "kas_keliling" -> tvKasKeliling
+     * 4. Card 4 (Kanan Bawah): PENGELUARAN KAS -> Key "pengeluaran_kas" / "total_pengeluaran" -> tvSaldoCicilan
+     */
+    fun bindDashboardCards(
+        saldoKas: Double?,
+        kasAnniversary: Double?,
+        kasKeliling: Double?,
+        pengeluaranKas: Double?
+    ) {
+        findViewById<android.widget.TextView>(R.id.tvSaldoKas)?.text = formatRupiah(saldoKas)
+        findViewById<android.widget.TextView>(R.id.tvKasAnniversary)?.text = formatRupiah(kasAnniversary)
+        findViewById<android.widget.TextView>(R.id.tvKasKeliling)?.text = formatRupiah(kasKeliling ?: 0.0)
+        findViewById<android.widget.TextView>(R.id.tvSaldoCicilan)?.text = formatRupiah(pengeluaranKas)
     }
 
     /**
@@ -742,25 +778,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    fun setupXmlSyncListeners() {
+        findViewById<android.view.View?>(R.id.btnSinkronisasi)?.setOnClickListener {
+            syncAllDataRealtime()
+        }
+        findViewById<android.view.View?>(R.id.btnRefreshData)?.setOnClickListener {
+            syncAllDataRealtime()
+        }
+    }
+
     /**
-     * Sinkronisasi Real-Time seluruh data CPanel saat tombol Refresh ditekan.
+     * Sinkronisasi Real-Time seluruh data cPanel saat tombol btnSinkronisasi ditekan.
      */
     fun syncAllDataRealtime(onFinished: (() -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                // Re-fetch get_dashboard.php dan get_anggota.php dari cPanel API
                 fetchDashboardData()
+                fetchDaftarAnggota()
                 viewModel.syncFromApiSuspend()
                 fetchDashboardUserSession()
-                fetchDaftarAnggota()
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Data CPanel Berhasil Diperbarui", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Data Berhasil Disinkronkan!", Toast.LENGTH_SHORT).show()
                     onFinished?.invoke()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Gagal terhubung ke server CPanel", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Gagal: ${e.message ?: "koneksi internet/server"}", Toast.LENGTH_SHORT).show()
                     onFinished?.invoke()
                 }
             }

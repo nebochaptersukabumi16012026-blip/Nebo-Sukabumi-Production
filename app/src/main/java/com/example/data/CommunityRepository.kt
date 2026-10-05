@@ -296,7 +296,21 @@ class CommunityRepository(
     suspend fun getAllKasKeliling(): List<KasKeliling> = _allKasKeliling.value
 
     suspend fun insertKasKeliling(kasKeliling: KasKeliling): Long {
-        try { ApiClient.apiService.addKasKeliling(kasKeliling) } catch (e: Exception) {}
+        try {
+            ApiClient.apiService.tambahKasKeliling(mapOf(
+                "bulan" to kasKeliling.bulan,
+                "tahun" to kasKeliling.tahun,
+                "nominal" to kasKeliling.totalPemasukan,
+                "total_pemasukan" to kasKeliling.totalPemasukan,
+                "total_pengeluaran" to kasKeliling.totalPengeluaran,
+                "catatan" to kasKeliling.catatan,
+                "keterangan" to kasKeliling.catatan,
+                "jenis" to "pemasukan",
+                "created_by" to kasKeliling.createdBy
+            ))
+        } catch (e: Exception) {
+            try { ApiClient.apiService.addKasKeliling(kasKeliling) } catch (e2: Exception) {}
+        }
         syncFromApi()
         return 0L
     }
@@ -386,7 +400,34 @@ class CommunityRepository(
         allPembayaranFlow.map { list -> list.filter { it.anggotaId == anggotaId } }
 
     suspend fun insertAnggota(anggota: Anggota): Long {
-        try { ApiClient.apiService.addAnggota(anggota) } catch (e: Exception) {}
+        try {
+            ApiClient.apiService.tambahAnggota(mapOf(
+                "nama" to anggota.nama,
+                "nra" to anggota.nra,
+                "alamat" to anggota.alamat,
+                "no_wa" to anggota.nomorTelepon,
+                "nomor_telepon" to anggota.nomorTelepon,
+                "role" to anggota.role,
+                "statusAktif" to anggota.statusAktif,
+                "harga_barang" to anggota.hargaBarang,
+                "hargaBarang" to anggota.hargaBarang,
+                "lamaCicilan" to anggota.lamaCicilan,
+                "lama_cicilan" to anggota.lamaCicilan,
+                "cicilan_per_bulan" to anggota.cicilanPerBulan,
+                "cicilanPerBulan" to anggota.cicilanPerBulan,
+                "totalTagihan" to anggota.totalTagihan,
+                "total_tagihan" to anggota.totalTagihan,
+                "sisa_cicilan" to anggota.sisaCicilan,
+                "sisaCicilan" to anggota.sisaCicilan,
+                "total_cicilan" to anggota.totalCicilan,
+                "totalCicilan" to anggota.totalCicilan,
+                "username" to anggota.nra,
+                "password" to anggota.nra,
+                "foto" to anggota.foto
+            ))
+        } catch (e: Exception) {
+            try { ApiClient.apiService.addAnggota(anggota) } catch (e2: Exception) {}
+        }
         syncFromApi()
         return 0L
     }
@@ -435,7 +476,7 @@ class CommunityRepository(
             } catch (e: Exception) {}
         } else if (pembayaran.jenisPembayaran.equals("KAS", ignoreCase = true)) {
             try {
-                ApiClient.apiService.inputKas(mapOf(
+                ApiClient.apiService.tambahKas(mapOf(
                     "id_anggota" to pembayaran.anggotaId,
                     "nominal" to pembayaran.nominal,
                     "keterangan" to (pembayaran.keterangan ?: "Iuran Kas"),
@@ -446,8 +487,20 @@ class CommunityRepository(
                 ))
             } catch (e: Exception) {
                 try {
-                    ApiClient.apiService.addPembayaran(pembayaran)
-                } catch (e2: Exception) {}
+                    ApiClient.apiService.inputKas(mapOf(
+                        "id_anggota" to pembayaran.anggotaId,
+                        "nominal" to pembayaran.nominal,
+                        "keterangan" to (pembayaran.keterangan ?: "Iuran Kas"),
+                        "tanggal" to pembayaran.tanggalBayar,
+                        "bukti_pembayaran" to pembayaran.buktiPembayaran,
+                        "role" to userRole,
+                        "user_role" to userRole
+                    ))
+                } catch (e2: Exception) {
+                    try {
+                        ApiClient.apiService.addPembayaran(pembayaran)
+                    } catch (e3: Exception) {}
+                }
             }
         }
         syncFromApi()

@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import com.example.network.CpanelApiHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -206,6 +207,7 @@ fun PembayaranFormScreen(
     }
 
     val context = LocalContext.current
+    var isSaving by remember { mutableStateOf(false) }
     var paymentSaved by remember { mutableStateOf(false) }
     var lastSavedNominal by remember { mutableStateOf(0.0) }
 
@@ -309,28 +311,88 @@ fun PembayaranFormScreen(
                     Button(
                         onClick = {
                             val nominal = nominalStr.toDoubleOrNull() ?: 0.0
-                            if (nominal > 0 && anggota != null) {
-                                if (jenisPembayaran == "CICILAN" && nominal > anggota.sisaCicilan) {
-                                    Toast.makeText(context, "Nominal pembayaran melebihi sisa cicilan.", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                                viewModel.addPembayaran(
+                            if (nominal <= 0) {
+                                Toast.makeText(context, "Nominal pembayaran wajib lebih dari 0.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (anggota == null) {
+                                Toast.makeText(context, "Data anggota tidak valid.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (jenisPembayaran == "CICILAN" && nominal > anggota.sisaCicilan) {
+                                Toast.makeText(context, "Nominal pembayaran melebihi sisa cicilan.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            isSaving = true
+                            val roleCurrent = (viewModel.loggedInUserRole.value ?: "BENDAHARA").uppercase()
+
+                            if (jenisPembayaran.equals("KAS", ignoreCase = true)) {
+                                // Kirim HTTP POST langsung ke cPanel API tambah_kas.php
+                                CpanelApiHelper.inputKas(
+                                    context = context,
+                                    anggotaId = anggota.id,
+                                    anggotaNama = anggota.nama,
+                                    nominal = nominal,
+                                    keterangan = keterangan.ifBlank { "Iuran Kas Anggota" },
+                                    role = roleCurrent,
+                                    buktiPembayaran = buktiUri?.toString(),
+                                    onSuccess = {
+                                        isSaving = false
+                                        lastSavedNominal = nominal
+                                        paymentSaved = true
+                                        // Pembersihan form input
+                                        nominalStr = ""
+                                        keterangan = ""
+                                        buktiUri = null
+                                        // Refresh data di RecyclerView / Dashboard
+                                        viewModel.syncFromApi()
+                                        (context as? com.example.MainActivity)?.fetchDashboardData()
+                                        (context as? com.example.MainActivity)?.fetchDaftarAnggota()
+                                    },
+                                    onError = { _ ->
+                                        isSaving = false
+                                    }
+                                )
+                            } else {
+                                // Cicilan atau Anniversary langsung ke cPanel API pembayaran.php
+                                CpanelApiHelper.inputPembayaran(
+                                    context = context,
                                     anggotaId = anggota.id,
                                     anggotaNama = anggota.nama,
                                     jenisPembayaran = jenisPembayaran,
                                     nominal = nominal,
+                                    keterangan = keterangan.ifBlank { "Pembayaran $jenisPembayaran" },
                                     buktiPembayaran = buktiUri?.toString(),
-                                    keterangan = keterangan
+                                    role = roleCurrent,
+                                    onSuccess = {
+                                        isSaving = false
+                                        lastSavedNominal = nominal
+                                        paymentSaved = true
+                                        // Pembersihan form input
+                                        nominalStr = ""
+                                        keterangan = ""
+                                        buktiUri = null
+                                        // Refresh data di RecyclerView / Dashboard
+                                        viewModel.syncFromApi()
+                                        (context as? com.example.MainActivity)?.fetchDashboardData()
+                                        (context as? com.example.MainActivity)?.fetchDaftarAnggota()
+                                    },
+                                    onError = { _ ->
+                                        isSaving = false
+                                    }
                                 )
-                                lastSavedNominal = nominal
-                                paymentSaved = true
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
                         shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        enabled = !isSaving
                     ) {
-                        Text("Simpan Pembayaran", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
+                        if (isSaving) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                        } else {
+                            Text("Simpan Pembayaran", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             } else {

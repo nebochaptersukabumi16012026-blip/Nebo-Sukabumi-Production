@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import com.example.network.KasKelilingUnifiedResponse
+import com.example.network.CpanelApiHelper
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -212,6 +213,7 @@ fun KasKelilingFormScreen(navController: NavController, viewModel: CommunityView
     var totalPemasukan by remember { mutableStateOf(existingItem?.totalPemasukan?.toInt()?.toString() ?: "0") }
     var totalPengeluaran by remember { mutableStateOf(existingItem?.totalPengeluaran?.toInt()?.toString() ?: "0") }
     var catatan by remember { mutableStateOf(existingItem?.catatan ?: "") }
+    var isSaving by remember { mutableStateOf(false) }
 
     var monthDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -342,33 +344,40 @@ fun KasKelilingFormScreen(navController: NavController, viewModel: CommunityView
                         Toast.makeText(context, "Semua data wajib diisi!", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    if (kasKelilingId == -1) {
-                        viewModel.addMonthlyKasKeliling(
-                            bulan = selectedBulan,
-                            tahun = tahun,
-                            totalPemasukan = pemasukanVal,
-                            totalPengeluaran = pengeluaranVal,
-                            catatan = catatan,
-                            createdBy = currentUsername
-                        )
-                    } else {
-                        viewModel.updateMonthlyKasKeliling(
-                            id = kasKelilingId,
-                            firestoreId = existingItem?.firestoreId ?: "",
-                            bulan = selectedBulan,
-                            tahun = tahun,
-                            totalPemasukan = pemasukanVal,
-                            totalPengeluaran = pengeluaranVal,
-                            catatan = catatan,
-                            createdBy = existingItem?.createdBy ?: currentUsername
-                        )
-                    }
-                    navController.popBackStack()
+                    isSaving = true
+                    CpanelApiHelper.inputKasKeliling(
+                        context = context,
+                        bulan = selectedBulan,
+                        tahun = tahun.trim(),
+                        pemasukan = pemasukanVal,
+                        pengeluaran = pengeluaranVal,
+                        catatan = catatan.trim(),
+                        createdBy = currentUsername,
+                        onSuccess = {
+                            isSaving = false
+                            // Pembersihan form
+                            totalPemasukan = ""
+                            totalPengeluaran = ""
+                            catatan = ""
+                            // Refresh data di RecyclerView / Dashboard
+                            viewModel.syncFromApi()
+                            (context as? com.example.MainActivity)?.fetchDashboardData()
+                            navController.popBackStack()
+                        },
+                        onError = { _ ->
+                            isSaving = false
+                        }
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(24.dp),
+                enabled = !isSaving
             ) {
-                Text("Simpan")
+                if (isSaving) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("Simpan")
+                }
             }
 
             if (kasKelilingId != -1) {

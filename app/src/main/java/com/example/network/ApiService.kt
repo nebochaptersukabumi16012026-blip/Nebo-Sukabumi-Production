@@ -209,6 +209,10 @@ interface ApiService {
     suspend fun getAnggota(): Response<BaseResponse<List<Anggota>>>
 
     @Headers("Cache-Control: no-cache")
+    @POST("tambah_anggota.php")
+    suspend fun tambahAnggota(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
+
+    @Headers("Cache-Control: no-cache")
     @POST("anggota.php")
     suspend fun addAnggota(@Body anggota: Anggota): Response<BaseResponse<Any>>
 
@@ -222,6 +226,9 @@ interface ApiService {
     @Headers("Cache-Control: no-cache")
     @GET("kas_keliling.php")
     suspend fun getKasKeliling(): Response<okhttp3.ResponseBody>
+
+    @POST("tambah_kas_keliling.php")
+    suspend fun tambahKasKeliling(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
 
     @POST("kas_keliling.php")
     suspend fun addKasKeliling(@Body kas: KasKeliling): Response<BaseResponse<Any>>
@@ -237,6 +244,9 @@ interface ApiService {
 
     @POST("pembayaran.php")
     suspend fun addPembayaran(@Body pembayaran: Pembayaran): Response<BaseResponse<Any>>
+
+    @POST("tambah_kas.php")
+    suspend fun tambahKas(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
 
     @POST("input_kas.php")
     suspend fun inputKas(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>

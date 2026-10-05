@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 import com.example.data.Anggota
 import com.example.data.Pembayaran
+import com.example.network.CpanelApiHelper
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
@@ -1135,26 +1136,72 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
                         return@Button
                     }
                     isSaving = true
-                    viewModel.saveAnggota(
-                        id = memberId,
-                        nama = nama,
-                        nra = nra,
-                        alamat = alamat,
-                        nomorTelepon = nomorTelepon,
-                        statusAktif = statusAktif,
-                        foto = fotoUri?.toString(),
-                        hargaBarang = hargaBarangVal,
-                        totalCicilan = totalPaid,
-                        sisaCicilan = sisaCicilanVal,
-                        lamaCicilan = lamaCicilanVal,
-                        cicilanPerBulan = cicilanPerBulanVal,
-                        totalTagihan = hargaBarangVal
-                    ) { success, message ->
-                        isSaving = false
-                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                        if (success) {
-                            navController.popBackStack()
-                        }
+                    if (memberId == -1) {
+                        // Tambah Anggota langsung ke cPanel via HTTP POST tambah_anggota.php
+                        CpanelApiHelper.tambahAnggota(
+                            context = context,
+                            nama = nama.trim(),
+                            nra = nra.trim(),
+                            alamat = alamat.trim(),
+                            nomorTelepon = nomorTelepon.trim(),
+                            role = "ANGGOTA",
+                            statusAktif = statusAktif,
+                            hargaBarang = hargaBarangVal,
+                            lamaCicilan = lamaCicilanVal,
+                            cicilanPerBulan = cicilanPerBulanVal,
+                            totalTagihan = hargaBarangVal,
+                            sisaCicilan = sisaCicilanVal,
+                            totalCicilan = totalPaid,
+                            foto = fotoUri?.toString(),
+                            onSuccess = {
+                                // 1. Pembersihan form (clear input)
+                                nama = ""
+                                nra = ""
+                                alamat = ""
+                                nomorTelepon = ""
+                                hargaBarangStr = ""
+                                lamaCicilanStr = ""
+                                fotoUri = null
+                                isSaving = false
+                                // 2. Refresh data di RecyclerView / Dashboard
+                                viewModel.syncFromApi()
+                                (context as? com.example.MainActivity)?.fetchDaftarAnggota()
+                                (context as? com.example.MainActivity)?.fetchDashboardData()
+                                navController.popBackStack()
+                            },
+                            onError = { _ ->
+                                isSaving = false
+                            }
+                        )
+                    } else {
+                        // Edit Anggota ke cPanel via HTTP POST/PUT anggota.php
+                        CpanelApiHelper.updateAnggota(
+                            context = context,
+                            id = memberId,
+                            nama = nama.trim(),
+                            nra = nra.trim(),
+                            alamat = alamat.trim(),
+                            nomorTelepon = nomorTelepon.trim(),
+                            role = anggota?.role ?: "ANGGOTA",
+                            statusAktif = statusAktif,
+                            hargaBarang = hargaBarangVal,
+                            lamaCicilan = lamaCicilanVal,
+                            cicilanPerBulan = cicilanPerBulanVal,
+                            totalTagihan = hargaBarangVal,
+                            sisaCicilan = sisaCicilanVal,
+                            totalCicilan = totalPaid,
+                            foto = fotoUri?.toString(),
+                            onSuccess = {
+                                isSaving = false
+                                viewModel.syncFromApi()
+                                (context as? com.example.MainActivity)?.fetchDaftarAnggota()
+                                (context as? com.example.MainActivity)?.fetchDashboardData()
+                                navController.popBackStack()
+                            },
+                            onError = { _ ->
+                                isSaving = false
+                            }
+                        )
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),

@@ -22,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.data.Pengeluaran
+import com.example.network.CpanelApiHelper
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -322,6 +324,7 @@ fun PengeluaranFormScreen(
     var expandedDropdown by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    var isSaving by remember { mutableStateOf(false) }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         buktiUri = uri
     }
@@ -512,42 +515,47 @@ fun PengeluaranFormScreen(
                         return@Button
                     }
 
-                    if (isEditMode && existingPengeluaran != null) {
-                        viewModel.updatePengeluaran(
-                            existingPengeluaran.copy(
-                                jenisKas = jenisKas,
-                                nominal = nominal,
-                                keterangan = keterangan,
-                                tanggal = tanggal,
-                                bukti = buktiUri?.toString(),
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        )
-                        Toast.makeText(context, "Pengeluaran berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                    } else {
-                        viewModel.addPengeluaran(
-                            jenisKas = jenisKas,
-                            nominal = nominal,
-                            keterangan = keterangan,
-                            tanggal = tanggal,
-                            bukti = buktiUri?.toString(),
-                            createdBy = "BENDAHARA"
-                        )
-                        Toast.makeText(context, "Pengeluaran berhasil ditambahkan", Toast.LENGTH_SHORT).show()
-                    }
-                    navController.popBackStack()
+                    isSaving = true
+                    CpanelApiHelper.inputPengeluaran(
+                        context = context,
+                        jenisKas = jenisKas,
+                        nominal = nominal,
+                        keterangan = keterangan.trim(),
+                        tanggalMillis = tanggal,
+                        bukti = buktiUri?.toString(),
+                        createdBy = "BENDAHARA",
+                        onSuccess = {
+                            isSaving = false
+                            // Pembersihan form
+                            nominalStr = ""
+                            keterangan = ""
+                            buktiUri = null
+                            // Refresh data di RecyclerView / Dashboard
+                            viewModel.syncFromApi()
+                            (context as? com.example.MainActivity)?.fetchDashboardData()
+                            navController.popBackStack()
+                        },
+                        onError = { _ ->
+                            isSaving = false
+                        }
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
                 shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                enabled = !isSaving
             ) {
-                Text(
-                    if (isEditMode) "Simpan Perubahan" else "Tambah Pengeluaran",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
+                if (isSaving) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text(
+                        if (isEditMode) "Simpan Perubahan" else "Tambah Pengeluaran",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
             }
         }
     }

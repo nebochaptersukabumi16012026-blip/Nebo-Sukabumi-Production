@@ -542,17 +542,22 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         coroutineScope.launch {
                             isSyncing = true
                             try {
-                                (context as? com.example.MainActivity)?.autoRefreshSession()
-                                (context as? com.example.MainActivity)?.syncAllDataRealtime()
-                                Toast.makeText(context, "Sinkronisasi data berhasil", Toast.LENGTH_SHORT).show()
+                                val mainActivity = context as? com.example.MainActivity
+                                if (mainActivity != null) {
+                                    mainActivity.autoRefreshSession()
+                                    mainActivity.syncAllDataRealtime()
+                                } else {
+                                    viewModel.syncFromApiSuspend()
+                                    Toast.makeText(context, "Data Berhasil Disinkronkan!", Toast.LENGTH_SHORT).show()
+                                }
                             } catch (e: Exception) {
-                                Toast.makeText(context, "Gagal sinkronisasi: ${e.message}", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
                             } finally {
                                 isSyncing = false
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("btnSinkronisasi"),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF2563EB)
                     ),
@@ -757,13 +762,13 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         }
                     }
 
-                    // BARIS 2: KAS KELILING
+                    // BARIS 2: KAS KELILING (KIRI) | PENGELUARAN KAS (KANAN)
                     val syncErrorVal by viewModel.syncError.collectAsState()
                     val kasKelilingVal: Double? = when {
                         kasSummary?.saldo_kas_keliling != null -> kasSummary!!.saldo_kas_keliling
                         kasKelilingList.isNotEmpty() -> saldoKasKelilingFinal
-                        dashboardData?.saldo_kas_keliling != null -> dashboardData!!.saldo_kas_keliling
                         dashboardData?.kas_keliling != null -> dashboardData!!.kas_keliling
+                        dashboardData?.saldo_kas_keliling != null -> dashboardData!!.saldo_kas_keliling
                         else -> null
                     }
                     val isKasKelilingError = kasKelilingVal == null && syncErrorVal != null
@@ -772,42 +777,94 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                         isKasKelilingError -> "Gagal mengambil saldo Kas Keliling"
                         else -> "Memuat..."
                     }
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onNavigateFinance("kas_keliling") },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+
+                    val totalPengeluaranVal: Double = dashboardData?.pengeluaran_kas
+                        ?: dashboardData?.totalPengeluaran
+                        ?: totalPengeluaranKas
+                    val totalPengeluaranStr = formatRupiah(totalPengeluaranVal)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(
+                        // Card 3: KAS KELILING (KIRI)
+                        Card(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp)
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onNavigateFinance("kas_keliling") },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
-                            Text(
-                                text = "SALDO KAS KELILING",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                color = Color(0xFF94A3B8)
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = "KAS KELILING",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
 
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                color = Color.White.copy(alpha = 0.1f)
-                            )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = Color.White.copy(alpha = 0.1f)
+                                )
 
-                            Text(
-                                text = kasKelilingNominalStr,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.ExtraBold, 
-                                    fontSize = if (isKasKelilingError) 11.sp else 16.sp
-                                ),
-                                color = if (isKasKelilingError) Color(0xFFF87171) else Color(0xFF38BDF8)
-                            )
+                                Text(
+                                    text = kasKelilingNominalStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold, 
+                                        fontSize = if (isKasKelilingError) 11.sp else 16.sp
+                                    ),
+                                    color = if (isKasKelilingError) Color(0xFFF87171) else Color(0xFF38BDF8)
+                                )
+                            }
+                        }
+
+                        // Card 4: PENGELUARAN KAS (KANAN)
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onNavigateFinance("pengeluaran_kas") },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp)
+                            ) {
+                                Text(
+                                    text = "PENGELUARAN KAS",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = Color(0xFF94A3B8)
+                                )
+
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = Color.White.copy(alpha = 0.1f)
+                                )
+
+                                Text(
+                                    text = totalPengeluaranStr,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 16.sp
+                                    ),
+                                    color = Color(0xFFF87171)
+                                )
+                            }
                         }
                     }
                 }
