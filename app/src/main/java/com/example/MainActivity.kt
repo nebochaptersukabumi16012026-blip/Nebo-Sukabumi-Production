@@ -455,13 +455,13 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Memanggil API https://nebosukabumi.net/api/get_dashboard.php
-     * Parsing JSON Object secara aman menggunakan optDouble dan optInt:
-     * - total_anniversary -> Total Terkumpul (Format Rupiah)
-     * - target_per_anggota -> Target / Anggota (Format Rupiah)
-     * - anggota_belum_bayar -> Belum Bayar (Contoh: "X Anggota")
-     * - saldo_kas -> Card Kas Keliling (Format Rupiah)
-     * - total_anggota -> Banner Total Anggota
+     * Memanggil 1 Endpoint Utama: https://nebosukabumi.net/api/get_dashboard.php
+     * Parsing Data JSON sesuai aturan:
+     * 1. Card Kas Utama       -> JSON key: "saldo_kas_utama"
+     * 2. Card Kas Keliling    -> JSON key: "kas_keliling"
+     * 3. Card Kas Anniversary -> JSON key: "kas_anniversary"
+     * 4. Card Cicilan         -> JSON key: "saldo_cicilan"
+     * 5. Card Total Saldo     -> JSON key: "total_saldo"
      */
     fun fetchDashboardData(onComplete: ((com.example.network.DashboardData) -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -482,9 +482,8 @@ class MainActivity : ComponentActivity() {
                         useCaches = false
                         defaultUseCaches = false
                         setRequestProperty("Accept", "application/json")
-                        setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
+                        setRequestProperty("Cache-Control", "no-cache")
                         setRequestProperty("Pragma", "no-cache")
-                        setRequestProperty("Expires", "0")
                     }
                     if (conn.responseCode == HttpURLConnection.HTTP_OK) {
                         val reader = BufferedReader(InputStreamReader(conn.inputStream))
@@ -497,35 +496,7 @@ class MainActivity : ComponentActivity() {
                         jsonStr = sb.toString().trim()
                     }
                 } catch (e: Exception) {
-                    // Fallback URL jika ada perbedaan path
-                    try {
-                        val fallbackUrl = URL("https://nebosukabumi.net/api/dashboard.php?role=" +
-                                java.net.URLEncoder.encode(currentRole, "UTF-8") +
-                                "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8"))
-                        val conn = (fallbackUrl.openConnection() as HttpURLConnection).apply {
-                            requestMethod = "GET"
-                            connectTimeout = 8000
-                            readTimeout = 8000
-                            useCaches = false
-                            defaultUseCaches = false
-                            setRequestProperty("Accept", "application/json")
-                            setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
-                            setRequestProperty("Pragma", "no-cache")
-                            setRequestProperty("Expires", "0")
-                        }
-                        if (conn.responseCode == HttpURLConnection.HTTP_OK) {
-                            val reader = BufferedReader(InputStreamReader(conn.inputStream))
-                            val sb = StringBuilder()
-                            var line: String?
-                            while (reader.readLine().also { line = it } != null) {
-                                sb.append(line)
-                            }
-                            reader.close()
-                            jsonStr = sb.toString().trim()
-                        }
-                    } catch (ex: Exception) {
-                        ex.printStackTrace()
-                    }
+                    e.printStackTrace()
                 }
 
                 if (jsonStr.startsWith("{")) {
@@ -536,138 +507,115 @@ class MainActivity : ComponentActivity() {
                         root
                     }
 
-                    // Safe parsing dengan optDouble dan optInt
+                    // 1. Card Kas Utama -> key: "saldo_kas_utama"
+                    val saldoKasUtama = if (dataObj.has("saldo_kas_utama") && !dataObj.isNull("saldo_kas_utama")) {
+                        dataObj.optDouble("saldo_kas_utama", 0.0)
+                    } else {
+                        root.optDouble("saldo_kas_utama", dataObj.optDouble("saldo_kas", root.optDouble("saldo_kas", 0.0)))
+                    }
+
+                    // 2. Card Kas Keliling -> key: "kas_keliling"
+                    val kasKeliling = if (dataObj.has("kas_keliling") && !dataObj.isNull("kas_keliling")) {
+                        dataObj.optDouble("kas_keliling", 0.0)
+                    } else {
+                        root.optDouble("kas_keliling", 0.0)
+                    }
+
+                    // 3. Card Kas Anniversary -> key: "kas_anniversary"
+                    val kasAnniversary = if (dataObj.has("kas_anniversary") && !dataObj.isNull("kas_anniversary")) {
+                        dataObj.optDouble("kas_anniversary", 0.0)
+                    } else {
+                        root.optDouble("kas_anniversary", dataObj.optDouble("total_anniversary", root.optDouble("total_anniversary", 0.0)))
+                    }
+
+                    // 4. Card Cicilan -> key: "saldo_cicilan"
+                    val saldoCicilan = if (dataObj.has("saldo_cicilan") && !dataObj.isNull("saldo_cicilan")) {
+                        dataObj.optDouble("saldo_cicilan", 0.0)
+                    } else {
+                        root.optDouble("saldo_cicilan", dataObj.optDouble("total_sisa_cicilan", root.optDouble("total_sisa_cicilan", 0.0)))
+                    }
+
+                    // 5. Card Total Saldo -> key: "total_saldo"
+                    val totalSaldo = if (dataObj.has("total_saldo") && !dataObj.isNull("total_saldo")) {
+                        dataObj.optDouble("total_saldo", 0.0)
+                    } else {
+                        root.optDouble("total_saldo", saldoKasUtama + kasKeliling + kasAnniversary)
+                    }
+
+                    // Metadata tambahan dari JSON get_dashboard.php
                     val totalAnggota = dataObj.optInt("total_anggota", root.optInt("total_anggota", 0))
-                    val saldoKas = dataObj.optDouble(
-                        "saldo_kas",
-                        root.optDouble(
-                            "saldo_kas",
-                            dataObj.optDouble("saldo_kas_utama", root.optDouble("saldo_kas_utama", 0.0))
-                        )
-                    )
-                    val kasAnniversary = dataObj.optDouble(
-                        "kas_anniversary",
-                        root.optDouble(
-                            "kas_anniversary",
-                            dataObj.optDouble(
-                                "total_anniversary",
-                                root.optDouble(
-                                    "total_anniversary",
-                                    dataObj.optDouble("total_aniv", root.optDouble("total_aniv", dataObj.optDouble("iuran_anniversary", dataObj.optDouble("iuran_aniv", 0.0))))
-                                )
-                            )
-                        )
-                    )
-
-                    // Prioritas parsing Saldo Kas Keliling: periksa saldo_kas_keliling, kas_keliling, saldo_akhir, saldo
-                    val rawSaldoKK = when {
-                        dataObj.has("saldo_kas_keliling") && !dataObj.isNull("saldo_kas_keliling") -> dataObj.opt("saldo_kas_keliling")
-                        root.has("saldo_kas_keliling") && !root.isNull("saldo_kas_keliling") -> root.opt("saldo_kas_keliling")
-                        dataObj.has("kas_keliling") && !dataObj.isNull("kas_keliling") -> dataObj.opt("kas_keliling")
-                        root.has("kas_keliling") && !root.isNull("kas_keliling") -> root.opt("kas_keliling")
-                        dataObj.has("saldo_akhir") && !dataObj.isNull("saldo_akhir") -> dataObj.opt("saldo_akhir")
-                        root.has("saldo_akhir") && !root.isNull("saldo_akhir") -> root.opt("saldo_akhir")
-                        dataObj.has("saldo") && !dataObj.isNull("saldo") -> dataObj.opt("saldo")
-                        root.has("saldo") && !root.isNull("saldo") -> root.opt("saldo")
-                        else -> null
-                    }
-                    val kasKeliling: Double? = when (rawSaldoKK) {
-                        is Number -> rawSaldoKK.toDouble()
-                        is String -> rawSaldoKK.replace("Rp", "", ignoreCase = true).replace(".", "").replace(",", ".").trim().toDoubleOrNull()
-                        else -> null
-                    }
-
-                    val saldoCicilan = dataObj.optDouble(
-                        "saldo_cicilan",
-                        root.optDouble(
-                            "saldo_cicilan",
-                            dataObj.optDouble("total_sisa_cicilan", root.optDouble("total_sisa_cicilan", 0.0))
-                        )
-                    )
-                    val saldoKasKeliling = kasKeliling
-                    val pemasukanKasKeliling = dataObj.optDouble(
-                        "pemasukan_kas_keliling",
-                        root.optDouble(
-                            "pemasukan_kas_keliling",
-                            dataObj.optDouble("pemasukan_kas", root.optDouble("pemasukan_kas", dataObj.optDouble("total_pemasukan", root.optDouble("total_pemasukan", 0.0))))
-                        )
-                    )
-                    val pengeluaranKasKeliling = dataObj.optDouble(
-                        "pengeluaran_kas_keliling",
-                        root.optDouble(
-                            "pengeluaran_kas_keliling",
-                            dataObj.optDouble("pengeluaran_kas", root.optDouble("pengeluaran_kas", dataObj.optDouble("total_pengeluaran", root.optDouble("total_pengeluaran", 0.0))))
-                        )
-                    )
-
-                    val totalKas = dataObj.optDouble("total_kas", root.optDouble("total_kas", saldoKas))
-                    val pemasukanKas = pemasukanKasKeliling
-                    // 4. Card 4 (Kanan Bawah): PENGELUARAN KAS -> "pengeluaran_kas" / "total_pengeluaran"
-                    val pengeluaranKas = dataObj.optDouble(
-                        "pengeluaran_kas",
-                        root.optDouble(
-                            "pengeluaran_kas",
-                            dataObj.optDouble(
-                                "total_pengeluaran",
-                                root.optDouble("total_pengeluaran", pengeluaranKasKeliling)
-                            )
-                        )
-                    )
-                    val totalAnniversary = kasAnniversary
                     val targetPerAnggota = dataObj.optDouble("target_per_anggota", root.optDouble("target_per_anggota", dataObj.optDouble("target_aniv", 0.0)))
                     val targetKas = dataObj.optDouble("target_kas", root.optDouble("target_kas", 0.0))
-                    val anggotaBelumBayar = dataObj.optInt(
-                        "anggota_belum_bayar",
-                        root.optInt(
-                            "anggota_belum_bayar",
-                            dataObj.optInt("belum_anniversary", dataObj.optInt("belum_bayar_aniv", 0))
-                        )
-                    )
+                    val anggotaBelumBayar = dataObj.optInt("anggota_belum_bayar", root.optInt("anggota_belum_bayar", dataObj.optInt("belum_anniversary", 0)))
                     val belumKas = dataObj.optInt("belum_kas", root.optInt("belum_kas", dataObj.optInt("belum_bayar_kas", 0)))
-                    val totalPengeluaran = dataObj.optDouble("total_pengeluaran", root.optDouble("total_pengeluaran", pengeluaranKas))
-                    val totalSisaCicilan = saldoCicilan
+                    val totalPengeluaran = dataObj.optDouble("total_pengeluaran", root.optDouble("total_pengeluaran", 0.0))
                     val totalHargaBarang = dataObj.optDouble("total_harga_barang", root.optDouble("total_harga_barang", 0.0))
                     val totalSudahDibayar = dataObj.optDouble("total_sudah_dibayar", root.optDouble("total_sudah_dibayar", 0.0))
                     val anggotaMencicil = dataObj.optInt("anggota_mencicil", root.optInt("anggota_mencicil", 0))
 
+                    // Parsing User Session dari get_dashboard.php
+                    val userObj = root.optJSONObject("user") ?: dataObj.optJSONObject("user") ?: dataObj
+                    val userRole = userObj.optString("role", currentRole).uppercase()
+                    val isVerified = userObj.optBoolean("is_verified", userObj.optString("status_verifikasi", "1") == "1")
+                    val statusVerifStr = if (isVerified) "1" else "0"
+
+                    SessionManager.updateRoleAndVerification(
+                        context = this@MainActivity,
+                        role = userRole,
+                        isVerified = isVerified,
+                        statusVerifikasi = statusVerifStr
+                    )
+
                     val parsedData = com.example.network.DashboardData(
                         total_anggota = totalAnggota,
-                        total_kas = totalKas,
-                        total_anniversary = totalAnniversary,
+                        total_kas = saldoKasUtama,
+                        total_anniversary = kasAnniversary,
                         kas_anniversary = kasAnniversary,
-                        total_aniv = totalAnniversary,
-                        iuran_anniversary = totalAnniversary,
-                        iuran_aniv = totalAnniversary,
+                        total_aniv = kasAnniversary,
+                        iuran_anniversary = kasAnniversary,
+                        iuran_aniv = kasAnniversary,
                         target_per_anggota = targetPerAnggota,
                         target_aniv = targetPerAnggota,
                         anggota_belum_bayar = anggotaBelumBayar,
-                        saldo_kas = saldoKas,
-                        saldo_kas_keliling = saldoKasKeliling,
+                        saldo_kas = saldoKasUtama,
+                        saldo_kas_keliling = kasKeliling,
                         kas_keliling = kasKeliling,
                         saldo_cicilan = saldoCicilan,
-                        pemasukan_kas = pemasukanKas,
-                        pemasukan_kas_keliling = pemasukanKasKeliling,
-                        pengeluaran_kas = pengeluaranKas,
-                        pengeluaran_kas_keliling = pengeluaranKasKeliling,
+                        pemasukan_kas = saldoKasUtama,
+                        pemasukan_kas_keliling = kasKeliling,
+                        pengeluaran_kas = totalPengeluaran,
+                        pengeluaran_kas_keliling = 0.0,
                         belum_kas = belumKas,
                         belum_bayar_kas = belumKas,
                         belum_anniversary = anggotaBelumBayar,
                         belum_bayar_aniv = anggotaBelumBayar,
                         totalPengeluaran = totalPengeluaran,
-                        total_sisa_cicilan = totalSisaCicilan,
+                        total_sisa_cicilan = saldoCicilan,
                         total_harga_barang = totalHargaBarang,
                         total_sudah_dibayar = totalSudahDibayar,
                         anggota_mencicil = anggotaMencicil
                     )
 
                     withContext(Dispatchers.Main) {
-                        // Pemetaan (binding) langsung data JSON API ke 4 Card Laporan Rekapitulasi Kas (activity_main.xml Views)
-                        findViewById<android.widget.TextView>(R.id.tvSaldoKas)?.text = formatRupiah(saldoKas)
+                        // Data Binding ke Card View Layout (Tanpa ubah XML)
+                        // 1. Card Kas Utama       -> "saldo_kas_utama" -> tvSaldoKas
+                        findViewById<android.widget.TextView>(R.id.tvSaldoKas)?.text = formatRupiah(saldoKasUtama)
+
+                        // 2. Card Kas Anniversary -> "kas_anniversary" -> tvKasAnniversary
                         findViewById<android.widget.TextView>(R.id.tvKasAnniversary)?.text = formatRupiah(kasAnniversary)
-                        findViewById<android.widget.TextView>(R.id.tvKasKeliling)?.text = formatRupiah(kasKeliling ?: 0.0)
-                        findViewById<android.widget.TextView>(R.id.tvSaldoCicilan)?.text = formatRupiah(pengeluaranKas)
+
+                        // 3. Card Kas Keliling    -> "kas_keliling" -> tvKasKeliling
+                        findViewById<android.widget.TextView>(R.id.tvKasKeliling)?.text = formatRupiah(kasKeliling)
+
+                        // 4. Card Cicilan         -> "saldo_cicilan" -> tvSaldoCicilan
+                        findViewById<android.widget.TextView>(R.id.tvSaldoCicilan)?.text = formatRupiah(saldoCicilan)
+
+                        // 5. Card Total Saldo (jika view tersedia)
+                        findViewById<android.widget.TextView?>(R.id.tvTotalKas)?.text = formatRupiah(totalSaldo)
 
                         viewModel.setDashboardData(parsedData)
+                        viewModel.setLoggedInUserRole(userRole)
+                        viewModel.setUserVerified(isVerified)
                         onComplete?.invoke(parsedData)
                     }
                 }
@@ -697,20 +645,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Auto-refresh session saat tombol dialog OK ditekan atau saat pengguna melakukan Swipe Refresh pada Dashboard.
-     * Mengambil status verifikasi dan role terbaru dari API cPanel (get_dashboard.php dan get_anggota.php).
+     * Auto-refresh session & data kas dari 1 Endpoint Utama get_dashboard.php.
      */
     fun autoRefreshSession(onComplete: (() -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 1. Refresh dashboard data dari get_dashboard.php
                 fetchDashboardData()
-                // 2. Refresh session dari get_dashboard.php
-                fetchDashboardUserSession()
-                // 3. Refresh session & daftar anggota dari get_anggota.php
-                fetchDaftarAnggota()
-                // 4. Sinkronisasi data ke ViewModel
-                viewModel.syncFromApiSuspend()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -788,16 +728,13 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Sinkronisasi Real-Time seluruh data cPanel saat tombol btnSinkronisasi ditekan.
+     * Sinkronisasi Real-Time seluruh data cPanel dari 1 Endpoint Utama get_dashboard.php.
      */
     fun syncAllDataRealtime(onFinished: (() -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // Re-fetch get_dashboard.php dan get_anggota.php dari cPanel API
+                // Panggil 1 Endpoint Utama get_dashboard.php
                 fetchDashboardData()
-                fetchDaftarAnggota()
-                viewModel.syncFromApiSuspend()
-                fetchDashboardUserSession()
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@MainActivity, "Data Berhasil Disinkronkan!", Toast.LENGTH_SHORT).show()

@@ -1728,9 +1728,49 @@ fun DetailSaldoKasScreen(navController: NavController, viewModel: CommunityViewM
                 contentPadding = PaddingValues(bottom = 32.dp, top = 8.dp)
             ) {
                 item {
+                    val summarySaldo = viewModel.kasKelilingSummary.collectAsState().value?.saldo_kas_keliling ?: saldoAkhir
                     DarkGradientCard(modifier = Modifier.fillMaxWidth()) {
                         Text("Saldo Kas Keliling", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                        Text(formatRupiah(saldoAkhir), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = if (saldoAkhir >= 0) Color(0xFF4CAF50) else Color(0xFFF44336))
+                        Text(formatRupiah(summarySaldo), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = if (summarySaldo >= 0) Color(0xFF4CAF50) else Color(0xFFF44336))
+                    }
+                }
+
+                if (filteredList.isEmpty()) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Text("Belum ada data kas keliling", color = Color.Gray)
+                        }
+                    }
+                } else {
+                    items(filteredList, key = { it.id }) { item ->
+                        DarkGradientCard(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    val itemLabel = if (item.bulan.isNotBlank() && item.tahun.isNotBlank()) {
+                                        "${item.bulan} ${item.tahun}"
+                                    } else if (item.keterangan.isNotBlank()) {
+                                        item.keterangan
+                                    } else {
+                                        "Kas Keliling #${item.id}"
+                                    }
+                                    Text(itemLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                                    if (item.catatan.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(item.catatan, style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                                    }
+                                }
+                                Text(
+                                    text = formatRupiah(item.saldoBulan.takeIf { it != 0.0 } ?: item.totalPemasukan.takeIf { it != 0.0 } ?: item.nominal),
+                                    color = Color(0xFF4CAF50),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }

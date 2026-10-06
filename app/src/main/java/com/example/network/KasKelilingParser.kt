@@ -97,7 +97,18 @@ object KasKelilingParser {
                     val jenisTransaksi = item.optString("jenis_transaksi", "Pemasukan")
                     val nominal = parseDoubleSafe(item.opt("nominal"))
                     val tanggal = PengeluaranParser.parseDateValue(item.opt("tanggal"))
-                    val keterangan = item.optString("keterangan", "")
+                    val nama = when {
+                        item.has("nama") && !item.isNull("nama") -> item.optString("nama")
+                        item.has("nama_anggota") && !item.isNull("nama_anggota") -> item.optString("nama_anggota")
+                        item.has("anggota_nama") && !item.isNull("anggota_nama") -> item.optString("anggota_nama")
+                        else -> ""
+                    }
+                    val rawKeterangan = item.optString("keterangan", "")
+                    val keterangan = when {
+                        nama.isNotBlank() && rawKeterangan.isNotBlank() && !rawKeterangan.contains(nama, ignoreCase = true) -> "$nama - $rawKeterangan"
+                        nama.isNotBlank() -> nama
+                        else -> rawKeterangan
+                    }
                     val bulan = item.optString("bulan", "")
                     val tahun = item.optString("tahun", "")
 
@@ -107,12 +118,16 @@ object KasKelilingParser {
                     if (itemSaldo == 0.0 && item.has("saldo_bulan")) {
                         itemSaldo = parseDoubleSafe(item.opt("saldo_bulan"))
                     }
-                    val catatan = when {
+                    val rawCatatan = when {
                         item.has("catatan") && !item.isNull("catatan") -> item.optString("catatan")
-                        item.has("keterangan") && !item.isNull("keterangan") -> item.optString("keterangan")
                         else -> ""
                     }
-                    val createdBy = item.optString("created_by", "")
+                    val catatan = when {
+                        nama.isNotBlank() && rawCatatan.isNotBlank() && !rawCatatan.contains(nama, ignoreCase = true) -> "$nama - $rawCatatan"
+                        nama.isNotBlank() && rawCatatan.isBlank() -> nama
+                        else -> rawCatatan
+                    }
+                    val createdBy = item.optString("created_by", nama)
 
                     // Normalization if total_pemasukan / total_pengeluaran are 0 but nominal is set
                     if (itemTotalPemasukan == 0.0 && itemTotalPengeluaran == 0.0 && nominal > 0.0) {

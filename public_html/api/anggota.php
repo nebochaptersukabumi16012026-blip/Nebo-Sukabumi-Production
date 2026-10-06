@@ -8,11 +8,18 @@ $data = json_decode(file_get_contents("php://input"));
 switch ($method) {
     case 'GET':
         if (isset($_GET['id'])) {
-            $stmt = $conn->prepare("SELECT * FROM anggota WHERE id = ?");
+            $stmt = $conn->prepare("SELECT id, nama, role, no_wa, alamat, tgl_gabung, uang_kas, iuran_aniv, total_cicilan, harga_barang, sisa_cicilan, cicilan_per_bulan, nra, statusAktif, status, username, foto, totalTagihan, lamaCicilan, namaBarang, hargaBarang, totalCicilan, sisaCicilan, cicilanPerBulan, uangKas, iuranAniv, created_at, status_verifikasi FROM anggota WHERE id = ?");
             $stmt->execute(array($_GET['id']));
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                // Fallback jika ada kolom yang belum ada di schema
+                $stmt = $conn->prepare("SELECT * FROM anggota WHERE id = ?");
+                $stmt->execute(array($_GET['id']));
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
             
             if ($row) {
+                unset($row['password'], $row['password_hash'], $row['token'], $row['secret']);
                 $row['id'] = (int)$row['id'];
                 $row['uang_kas'] = (int)(isset($row['uang_kas']) ? $row['uang_kas'] : 0);
                 $row['iuran_aniv'] = (int)(isset($row['iuran_aniv']) ? $row['iuran_aniv'] : 0);
@@ -25,11 +32,17 @@ switch ($method) {
                 $result = null;
             }
         } else {
-            $stmt = $conn->query("SELECT * FROM anggota ORDER BY nama ASC");
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            try {
+                $stmt = $conn->query("SELECT id, nama, role, no_wa, alamat, tgl_gabung, uang_kas, iuran_aniv, total_cicilan, harga_barang, sisa_cicilan, cicilan_per_bulan, nra, statusAktif, status, username, foto, totalTagihan, lamaCicilan, namaBarang, hargaBarang, totalCicilan, sisaCicilan, cicilanPerBulan, uangKas, iuranAniv, created_at, status_verifikasi FROM anggota ORDER BY nama ASC");
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) {
+                $stmt = $conn->query("SELECT * FROM anggota ORDER BY nama ASC");
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
             $result = array();
             foreach ($rows as $row) {
                 $item = $row;
+                unset($item['password'], $item['password_hash'], $item['token'], $item['secret']);
                 $item['id'] = (int)$row['id'];
                 $item['nama'] = isset($row['nama']) ? $row['nama'] : '';
                 $item['nra'] = isset($row['nra']) ? $row['nra'] : '';

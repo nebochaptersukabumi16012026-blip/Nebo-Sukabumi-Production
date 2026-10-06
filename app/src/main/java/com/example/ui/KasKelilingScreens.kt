@@ -122,7 +122,10 @@ fun KasKelilingScreen(navController: NavController, viewModel: CommunityViewMode
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 80.dp)
                 ) {
-                    items(kasKelilingList.sortedByDescending { it.id }) { item ->
+                    items(
+                        items = kasKelilingList.sortedByDescending { it.id },
+                        key = { it.id }
+                    ) { item ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -148,8 +151,15 @@ fun KasKelilingScreen(navController: NavController, viewModel: CommunityViewMode
                                             modifier = Modifier.size(24.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
+                                        val headerTitle = if (item.bulan.isNotBlank() && item.tahun.isNotBlank()) {
+                                            "${item.bulan} ${item.tahun}"
+                                        } else if (item.keterangan.isNotBlank()) {
+                                            item.keterangan
+                                        } else {
+                                            "Kas Keliling #${item.id}"
+                                        }
                                         Text(
-                                            "${item.bulan} ${item.tahun}",
+                                            headerTitle,
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -178,10 +188,16 @@ fun KasKelilingScreen(navController: NavController, viewModel: CommunityViewMode
                                         )
                                     }
                                 }
-                                if (item.catatan.isNotEmpty()) {
+                                val extraInfo = when {
+                                    item.catatan.isNotBlank() && item.keterangan.isNotBlank() && item.catatan != item.keterangan -> "${item.keterangan} - ${item.catatan}"
+                                    item.catatan.isNotBlank() -> item.catatan
+                                    item.keterangan.isNotBlank() -> item.keterangan
+                                    else -> ""
+                                }
+                                if (extraInfo.isNotEmpty()) {
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                                     Text(
-                                        "Catatan: ${item.catatan}",
+                                        "Keterangan / Anggota: $extraInfo",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Color.Gray,
                                         lineHeight = 16.sp

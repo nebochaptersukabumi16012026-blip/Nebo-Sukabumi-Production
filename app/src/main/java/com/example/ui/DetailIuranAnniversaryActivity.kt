@@ -20,7 +20,7 @@ import java.util.Locale
 
 /**
  * Activity untuk menampilkan Detail Iuran & Kas Anniversary
- * Mengambil data dari endpoint: https://nebosukabumi.net/api/get_detail_anniversary.php
+ * Endpoint: https://nebosukabumi.net/api/get_detail_anniversary.php
  */
 class DetailIuranAnniversaryActivity : AppCompatActivity() {
 
@@ -35,6 +35,8 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
 
     private val adapter = IuranAnniversaryAdapter()
+    
+    // 1. Endpoint URL Lengkap dengan sub-directory /api/
     private val apiUrl = "https://nebosukabumi.net/api/get_detail_anniversary.php"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +46,7 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
         initViews()
         setupToolbar()
         setupRecyclerView()
-        loadDataAnniversary()
+        fetchApiData()
     }
 
     private fun initViews() {
@@ -58,8 +60,9 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
         rvIuranAnniversary = findViewById(R.id.rvIuranAnniversary)
         progressBar = findViewById(R.id.progressBar)
 
+        // 4. Panggil ulang fungsi fetchApiData saat tombol Refresh di Pojok Kanan Atas diklik
         btnRefresh.setOnClickListener {
-            loadDataAnniversary(showToast = true)
+            fetchApiData(showToast = true)
         }
     }
 
@@ -76,9 +79,9 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
     }
 
     /**
-     * Memuat data detail kas anniversary dari API dengan no-cache
+     * Mengambil data realtime dari server dengan header no-cache
      */
-    fun loadDataAnniversary(showToast: Boolean = false) {
+    fun fetchApiData(showToast: Boolean = false) {
         progressBar.visibility = View.VISIBLE
 
         val request = object : StringRequest(
@@ -89,19 +92,20 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
                 try {
                     val rootJson = JSONObject(response)
 
-                    // 1. Pemasukan Kas Anniversary (Kiri Atas)
+                    // 2. Pemetaan Data Response JSON:
+                    // TV Total Pemasukan -> ambil dari key JSON: "total_pemasukan"
                     val totalPemasukan = rootJson.optDouble("total_pemasukan", 0.0)
                     tvTotalPemasukan.text = formatRupiah(totalPemasukan)
 
-                    // 2. Pengeluaran Kas Anniversary (Kanan Atas)
+                    // TV Total Pengeluaran -> ambil dari key JSON: "total_pengeluaran"
                     val totalPengeluaran = rootJson.optDouble("total_pengeluaran", 0.0)
                     tvTotalPengeluaran.text = formatRupiah(totalPengeluaran)
 
-                    // 3. Sisa Kas Aniv (Nominal Besar)
+                    // TV Sisa Kas -> ambil dari key JSON: "sisa_kas"
                     val sisaKas = rootJson.optDouble("sisa_kas", maxOf(0.0, totalPemasukan - totalPengeluaran))
                     tvSisaKas.text = formatRupiah(sisaKas)
 
-                    // 5. RecyclerView / List Item dari array "data"
+                    // 3. Handling Recycler View Adapter: Parsing JSON array "data"
                     val dataArray = rootJson.optJSONArray("data")
                     val items = mutableListOf<IuranAnniversaryItem>()
 
@@ -126,12 +130,12 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
                         }
                     }
 
-                    // 4. Header List: jumlah item dari size array / key "total_transaksi"
+                    // TV Header List -> Tampilkan "Daftar Iuran Masuk (" + jsonObject.optInt("total_transaksi") + ")"
                     val totalTransaksi = rootJson.optInt("total_transaksi", items.size)
                     val countDisplay = if (totalTransaksi > 0) totalTransaksi else items.size
                     tvHeaderList.text = "Daftar Iuran Masuk ($countDisplay)"
 
-                    // Update Adapter
+                    // Update List Adapter
                     adapter.submitList(items)
 
                     if (items.isEmpty()) {
@@ -156,7 +160,7 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
                 Toast.makeText(this@DetailIuranAnniversaryActivity, "Gagal terhubung ke server", Toast.LENGTH_SHORT).show()
             }
         ) {
-            // 6. Anti-Crash & Cache: Tambahkan Header Cache-Control: no-cache
+            // 4. Bebas Cache & Auto Reload: Header HTTP "Cache-Control: no-cache"
             override fun getHeaders(): MutableMap<String, String> {
                 val headers = HashMap<String, String>()
                 headers["Cache-Control"] = "no-cache"
@@ -168,18 +172,25 @@ class DetailIuranAnniversaryActivity : AppCompatActivity() {
         Volley.newRequestQueue(this).add(request)
     }
 
-    /**
-     * Format angka ke format Rupiah (contoh: "Rp 150.000", "Rp 0")
-     */
-    private fun formatRupiah(nominal: Double): String {
-        val localeID = Locale("in", "ID")
-        val formatter = NumberFormat.getNumberInstance(localeID)
-        return "Rp " + formatter.format(nominal.toLong())
+    // Alias untuk kompatibilitas
+    fun loadDataAnniversary(showToast: Boolean = false) {
+        fetchApiData(showToast)
+    }
+
+    companion object {
+        /**
+         * Format angka ke format Rupiah (contoh: "Rp 150.000", "Rp 0")
+         */
+        fun formatRupiah(nominal: Double): String {
+            val localeID = Locale("in", "ID")
+            val formatter = NumberFormat.getNumberInstance(localeID)
+            return "Rp " + formatter.format(nominal.toLong())
+        }
     }
 }
 
 /**
- * Model data transaksi Iuran Anniversary
+ * Model data item Iuran Anniversary
  */
 data class IuranAnniversaryItem(
     val id: Int,
@@ -220,18 +231,12 @@ class IuranAnniversaryAdapter : RecyclerView.Adapter<IuranAnniversaryAdapter.Vie
         private val tvJumlahBayar: TextView = itemView.findViewById(R.id.tvJumlahBayar)
 
         fun bind(item: IuranAnniversaryItem) {
-            // Nama di sebelah kiri
+            // Set TextView Nama -> item.optString("nama")
             tvNama.text = item.nama
             tvKeterangan.text = if (item.keterangan.isNotBlank()) item.keterangan else "Iuran Anniversary"
 
-            // Jumlah bayar dengan format Rupiah di sebelah kanan
-            tvJumlahBayar.text = formatRupiah(item.jumlahBayar)
-        }
-
-        private fun formatRupiah(nominal: Double): String {
-            val localeID = Locale("in", "ID")
-            val formatter = NumberFormat.getNumberInstance(localeID)
-            return "Rp " + formatter.format(nominal.toLong())
+            // Set TextView Nominal -> "Rp " + formatRupiah(item.optDouble("jumlah_bayar"))
+            tvJumlahBayar.text = DetailIuranAnniversaryActivity.formatRupiah(item.jumlahBayar)
         }
     }
 }
