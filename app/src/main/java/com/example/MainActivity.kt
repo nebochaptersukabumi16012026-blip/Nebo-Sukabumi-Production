@@ -113,6 +113,9 @@ class MainActivity : ComponentActivity() {
                         composable("daftar_cicilan_anggota") {
                             DaftarCicilanAnggotaScreen(navController = navController, viewModel = viewModel)
                         }
+                        composable("cicilan") {
+                            DaftarCicilanAnggotaScreen(navController = navController, viewModel = viewModel)
+                        }
                         composable("detail_sisa_cicilan") {
                             DetailSisaCicilanScreen(navController = navController, viewModel = viewModel)
                         }

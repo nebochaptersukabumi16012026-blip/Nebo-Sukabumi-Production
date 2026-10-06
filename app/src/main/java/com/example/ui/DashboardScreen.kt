@@ -128,6 +128,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
 
     LaunchedEffect(Unit) {
         viewModel.syncFromApi()
+        viewModel.fetchCicilanAktif()
     }
 
     // Prioritize values from API dashboardData for consistency as requested
@@ -179,21 +180,34 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
     
     // Sinkronisasi Rekapitulasi Cicilan: HANYA menghitung anggota yang MASIH MEMILIKI SISA CICILAN (sisa > 0)
     val cicilanAktifList by viewModel.cicilanAktifList.collectAsState()
+    val cicilanApiErrorVal by viewModel.cicilanApiError.collectAsState()
     val anggotaAktifCicilan = anggotaList.filter { (it.sisaCicilan > 0.0) || (it.hargaBarang > 0.0 && (it.hargaBarang - it.totalCicilan) > 0.0) }
     
     val anggotaPunyaCicilanCount = dashboardData?.anggota_mencicil 
         ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.size else anggotaAktifCicilan.size)
 
-    val actualSisaCicilan = if (anggotaPunyaCicilanCount == 0) 0.0 else (
+    val actualSisaCicilan = if (anggotaPunyaCicilanCount == 0 && (dashboardData?.total_sisa_cicilan ?: 0.0) <= 0.0) 0.0 else (
         dashboardData?.total_sisa_cicilan 
+            ?: dashboardData?.saldo_cicilan
             ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.sumOf { it.sisa_cicilan } else anggotaAktifCicilan.sumOf { if (it.sisaCicilan > 0) it.sisaCicilan else maxOf(0.0, it.hargaBarang - it.totalCicilan) })
     )
-    val totalSisaCicilanStr = if (dashboardData != null || anggotaList.isNotEmpty() || cicilanAktifList.isNotEmpty()) formatRupiah(actualSisaCicilan) else "Memuat..."
 
-    val totalHargaBarang = if (anggotaPunyaCicilanCount == 0) 0.0 else (
+    val actualTotalHargaBarang = if (anggotaPunyaCicilanCount == 0 && (dashboardData?.total_harga_barang ?: 0.0) <= 0.0) 0.0 else (
         dashboardData?.total_harga_barang 
             ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.sumOf { it.harga_barang } else anggotaAktifCicilan.sumOf { it.hargaBarang })
     )
+
+    val actualTotalSudahDibayar = if (anggotaPunyaCicilanCount == 0 && (dashboardData?.total_sudah_dibayar ?: 0.0) <= 0.0) 0.0 else (
+        dashboardData?.total_sudah_dibayar 
+            ?: (if (cicilanAktifList.isNotEmpty()) cicilanAktifList.sumOf { it.sudah_dibayar } else anggotaAktifCicilan.sumOf { it.totalCicilan })
+    )
+
+    val isCicilanError = cicilanApiErrorVal != null && cicilanAktifList.isEmpty() && dashboardData == null
+    val totalSisaCicilanStr = when {
+        isCicilanError -> "Gagal memuat"
+        dashboardData != null || anggotaList.isNotEmpty() || cicilanAktifList.isNotEmpty() -> formatRupiah(actualSisaCicilan)
+        else -> "Memuat..."
+    }
     val totalSisaCicilan = actualSisaCicilan
     
     val totalPengeluaranAllStr = formatRupiah(totalPengeluaranKas)
@@ -864,6 +878,139 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
                                     ),
                                     color = Color(0xFFF87171)
                                 )
+                            }
+                        }
+                    }
+
+                    // BARIS 3: CARD CICILAN / ARISAN BARANG (PINTU MASUK PENGELOLAAN CICILAN AKTIF)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onNavigateFinance("daftar_cicilan_anggota") }
+                            .testTag("card_cicilan_dashboard"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFFF97316).copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ReceiptLong,
+                                            contentDescription = "Cicilan",
+                                            tint = Color(0xFFF97316),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "CICILAN AKTIF",
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp
+                                            ),
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                        Text(
+                                            text = if (isCicilanError) "Gagal memuat data API" else "$anggotaPunyaCicilanCount Anggota Sedang Mencicil",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = if (isCicilanError) Color(0xFFF87171) else Color(0xFFFDBA74)
+                                        )
+                                    }
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Kelola",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color(0xFFF97316)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowForward,
+                                        contentDescription = "Buka Detail Cicilan",
+                                        tint = Color(0xFFF97316),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = Color.White.copy(alpha = 0.1f)
+                            )
+
+                            if (isCicilanError) {
+                                Text(
+                                    text = "Status: Terjadi kendala saat menghubungkan ke endpoint cicilan (${cicilanApiErrorVal ?: "Server Error"})",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFFF87171)
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "Total Sisa Cicilan",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                        Text(
+                                            text = totalSisaCicilanStr,
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 16.sp
+                                            ),
+                                            color = Color(0xFFFB923C)
+                                        )
+                                    }
+
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "Sudah Masuk: ${formatRupiah(actualTotalSudahDibayar)}",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 11.sp
+                                            ),
+                                            color = Color(0xFF4ADE80)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Total Barang: ${formatRupiah(actualTotalHargaBarang)}",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
