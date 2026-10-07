@@ -189,16 +189,12 @@ object CpanelApiHelper {
         id: Int,
         nama: String,
         nra: String,
+        nomorUrut: String = "",
         alamat: String,
         nomorTelepon: String,
-        role: String = "ANGGOTA",
+        tanggalBergabung: String = "",
+        roleLogin: String = "ADMIN",
         statusAktif: Boolean = true,
-        hargaBarang: Double = 0.0,
-        lamaCicilan: Int = 0,
-        cicilanPerBulan: Double = 0.0,
-        totalTagihan: Double = 0.0,
-        sisaCicilan: Double = 0.0,
-        totalCicilan: Double = 0.0,
         foto: String? = null,
         onSuccess: (JSONObject) -> Unit,
         onError: (String) -> Unit
@@ -207,30 +203,20 @@ object CpanelApiHelper {
             "id" to id,
             "nama" to nama,
             "nra" to nra,
+            "nomor_urut" to nomorUrut,
             "alamat" to alamat,
             "no_wa" to nomorTelepon,
             "nomor_telepon" to nomorTelepon,
-            "role" to role,
+            "tgl_gabung" to tanggalBergabung,
+            "tanggal_bergabung" to tanggalBergabung,
+            "role_login" to roleLogin,
+            "user_role" to roleLogin,
             "statusAktif" to if (statusAktif) 1 else 0,
             "status" to if (statusAktif) "Aktif" else "Nonaktif",
-            "harga_barang" to hargaBarang,
-            "hargaBarang" to hargaBarang,
-            "lamaCicilan" to lamaCicilan,
-            "lama_cicilan" to lamaCicilan,
-            "cicilan_per_bulan" to cicilanPerBulan,
-            "cicilanPerBulan" to cicilanPerBulan,
-            "totalTagihan" to totalTagihan,
-            "total_tagihan" to totalTagihan,
-            "sisa_cicilan" to sisaCicilan,
-            "sisaCicilan" to sisaCicilan,
-            "total_cicilan" to totalCicilan,
-            "totalCicilan" to totalCicilan,
-            "username" to nra,
-            "password" to nra,
             "foto" to foto
         )
 
-        // Gunakan PUT request via StringRequest
+        // Gunakan PUT request via StringRequest ke anggota.php
         val url = "${BASE_URL}anggota.php"
         val queue = getQueue(context)
 
@@ -242,20 +228,28 @@ object CpanelApiHelper {
                     val json = JSONObject(response)
                     val status = json.optString("status", "").lowercase()
                     if (status == "success" || status == "ok" || json.optBoolean("success", false)) {
-                        Toast.makeText(context, "Berhasil disimpan ke cPanel", Toast.LENGTH_SHORT).show()
+                        val msg = json.optString("message", "Data anggota berhasil diperbarui.")
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         onSuccess(json)
                     } else {
-                        val message = json.optString("message", "Gagal mengupdate data anggota")
+                        val message = json.optString("message", "Gagal memperbarui data anggota")
                         Toast.makeText(context, "Gagal: $message", Toast.LENGTH_SHORT).show()
                         onError(message)
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Berhasil disimpan ke cPanel", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Data anggota berhasil diperbarui.", Toast.LENGTH_SHORT).show()
                     onSuccess(JSONObject().put("status", "success"))
                 }
             },
             { error ->
-                val msg = error.message ?: "Koneksi internet bermasalah"
+                var msg = error.message ?: "Koneksi internet bermasalah"
+                val networkResponse = error.networkResponse
+                if (networkResponse?.data != null) {
+                    try {
+                        val errorJson = JSONObject(String(networkResponse.data, Charsets.UTF_8))
+                        msg = errorJson.optString("message", msg)
+                    } catch (_: Exception) {}
+                }
                 Toast.makeText(context, "Gagal: $msg", Toast.LENGTH_SHORT).show()
                 onError(msg)
             }
@@ -278,7 +272,11 @@ object CpanelApiHelper {
             }
         }
 
-        stringRequest.retryPolicy = DefaultRetryPolicy(15000, 1, 1.0f)
+        stringRequest.retryPolicy = DefaultRetryPolicy(
+            15000,
+            1,
+            1.0f
+        )
         queue.add(stringRequest)
     }
 
@@ -371,6 +369,63 @@ object CpanelApiHelper {
             showToastOnError = true,
             onSuccess = onSuccess,
             onError = onError
+        )
+    }
+
+    /**
+     * Input Pembayaran Cicilan ke cPanel MySQL (https://nebosukabumi.net/api/cicilan.php)
+     */
+    fun inputCicilan(
+        context: Context,
+        anggotaId: Int,
+        nominal: Double,
+        keterangan: String,
+        tanggalMillis: Long = System.currentTimeMillis(),
+        role: String = "BENDAHARA",
+        onSuccess: (JSONObject) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val userRole = if (role.isBlank() || role.equals("GUEST", ignoreCase = true)) "BENDAHARA" else role.uppercase()
+        val dateFormatted = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date(tanggalMillis))
+        val params = mapOf(
+            "anggota_id" to anggotaId,
+            "id_anggota" to anggotaId,
+            "nominal" to nominal,
+            "tanggal" to dateFormatted,
+            "keterangan" to keterangan,
+            "role" to userRole,
+            "user_role" to userRole
+        )
+
+        sendPostRequest(
+            context = context,
+            endpoint = "cicilan.php",
+            params = params,
+            showToastOnSuccess = true,
+            showToastOnError = true,
+            onSuccess = onSuccess,
+            onError = { _ ->
+                // Fallback ke pembayaran.php
+                val fallbackParams = mapOf(
+                    "anggotaId" to anggotaId,
+                    "id_anggota" to anggotaId,
+                    "jenisPembayaran" to "CICILAN",
+                    "nominal" to nominal,
+                    "keterangan" to keterangan,
+                    "tanggal" to tanggalMillis,
+                    "role" to userRole,
+                    "user_role" to userRole
+                )
+                sendPostRequest(
+                    context = context,
+                    endpoint = "pembayaran.php",
+                    params = fallbackParams,
+                    showToastOnSuccess = true,
+                    showToastOnError = true,
+                    onSuccess = onSuccess,
+                    onError = onError
+                )
+            }
         )
     }
 

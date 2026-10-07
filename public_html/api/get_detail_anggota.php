@@ -71,10 +71,34 @@ try {
         $cicilanPerBulan = floatval(isset($row['cicilan_per_bulan']) ? $row['cicilan_per_bulan'] : 0);
         $nraVal = isset($row['nra']) ? $row['nra'] : '';
 
-        // Hitung total_dibayar secara akurat
-        $totalDibayar = floatval(isset($row['total_dibayar']) ? $row['total_dibayar'] : $totalCicilan);
-        if ($totalDibayar <= 0 && $hargaBarang > 0 && $sisaCicilan < $hargaBarang) {
-            $totalDibayar = max(0, $hargaBarang - $sisaCicilan);
+        // Hitung total_dibayar secara akurat dari tabel cicilan (Single Source of Truth)
+        $stmt_cic_sum = $conn->prepare("SELECT COALESCE(SUM(nominal), 0) as total FROM cicilan WHERE anggota_id = ?");
+        $stmt_cic_sum->execute(array($row['id']));
+        $row_cic_sum = $stmt_cic_sum->fetch(PDO::FETCH_ASSOC);
+        $sudahDibayarRiil = floatval($row_cic_sum['total'] ?? 0);
+        if ($sudahDibayarRiil <= 0 && $totalCicilan > 0) {
+            $sudahDibayarRiil = $totalCicilan;
+        }
+
+        if ($hargaBarang > 0) {
+            $sisaCicilan = max(0.0, $hargaBarang - $sudahDibayarRiil);
+        }
+        $totalDibayar = $sudahDibayarRiil;
+
+        // Ambil riwayat cicilan langsung dari tabel cicilan (Single Source of Truth)
+        $stmt_cic_list = $conn->prepare("SELECT id, anggota_id, nominal, tanggal, keterangan FROM cicilan WHERE anggota_id = ? ORDER BY tanggal DESC, id DESC");
+        $stmt_cic_list->execute(array($row['id']));
+        $riwayatCicilanDb = $stmt_cic_list ? $stmt_cic_list->fetchAll(PDO::FETCH_ASSOC) : array();
+
+        $riwayat_cicilan = array();
+        foreach ($riwayatCicilanDb as $rc) {
+            $riwayat_cicilan[] = array(
+                "id" => intval($rc['id']),
+                "id_transaksi" => "cicilan_" . $rc['id'],
+                "nominal" => floatval($rc['nominal']),
+                "tanggal" => $rc['tanggal'],
+                "keterangan" => !empty($rc['keterangan']) ? $rc['keterangan'] : 'Pembayaran Cicilan'
+            );
         }
 
         // Hak Akses Cicilan:
@@ -170,13 +194,23 @@ try {
             }
         }
 
+        $noWa = isset($row['no_wa']) && $row['no_wa'] !== '' ? $row['no_wa'] : (isset($row['nomor_telepon']) ? $row['nomor_telepon'] : (isset($row['no_hp']) ? $row['no_hp'] : ''));
+        $alamat = isset($row['alamat']) ? $row['alamat'] : '';
+        $tglGabung = isset($row['tgl_gabung']) && $row['tgl_gabung'] !== '' ? $row['tgl_gabung'] : (isset($row['tanggal_bergabung']) ? $row['tanggal_bergabung'] : '');
+        $nomorUrut = isset($row['nomor_urut']) && $row['nomor_urut'] !== '' ? $row['nomor_urut'] : (isset($row['nomorUrut']) ? $row['nomorUrut'] : (isset($row['no_urut']) ? $row['no_urut'] : ''));
+
         $response = array(
             "id" => intval($row['id']),
             "nama" => isset($row['nama']) ? $row['nama'] : '',
             "role" => isset($row['role']) ? $row['role'] : 'Anggota',
-            "no_wa" => isset($row['no_wa']) ? $row['no_wa'] : '',
-            "alamat" => isset($row['alamat']) ? $row['alamat'] : '',
-            "tgl_gabung" => isset($row['tgl_gabung']) ? $row['tgl_gabung'] : '',
+            "no_wa" => $noWa,
+            "nomor_telepon" => $noWa,
+            "no_hp" => $noWa,
+            "alamat" => $alamat,
+            "tgl_gabung" => $tglGabung,
+            "tanggal_bergabung" => $tglGabung,
+            "nomor_urut" => $nomorUrut,
+            "nomorUrut" => $nomorUrut,
             "uang_kas" => $uangKas,
             "iuran_aniv" => $iuranAniv,
             "kas" => $uangKas,
@@ -184,6 +218,7 @@ try {
             "total_aniv" => $iuranAniv,
             "total_cicilan" => $totalCicilan,
             "total_dibayar" => $totalDibayar,
+            "sudah_dibayar" => $totalDibayar,
             "harga_barang" => $hargaBarang,
             "sisa_cicilan" => $sisaCicilan,
             "can_see_cicilan" => (bool)$canSeeCicilan,
@@ -196,6 +231,7 @@ try {
             "lamaCicilan" => intval(isset($row['lamaCicilan']) ? $row['lamaCicilan'] : 0),
             "riwayat_kas" => $riwayat_kas,
             "riwayat_aniv" => $riwayat_aniv,
+            "riwayat_cicilan" => $riwayat_cicilan,
             "riwayat_pembayaran" => $riwayatPembayaran
         );
 

@@ -300,6 +300,9 @@ interface ApiService {
     @POST("cicilan.php")
     suspend fun addCicilan(@Body dto: CicilanDto): Response<BaseResponse<Any>>
 
+    @PUT("cicilan.php")
+    suspend fun updateCicilan(@Body dto: CicilanDto): Response<BaseResponse<Any>>
+
     @HTTP(method = "DELETE", path = "cicilan.php", hasBody = true)
     suspend fun deleteCicilan(@Body req: Map<String, Int>): Response<BaseResponse<Any>>
 

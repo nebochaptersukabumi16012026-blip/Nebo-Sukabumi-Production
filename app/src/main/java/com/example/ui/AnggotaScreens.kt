@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import android.widget.Toast
 import com.example.data.Anggota
 import com.example.data.Pembayaran
@@ -257,6 +258,7 @@ fun AnggotaDetailScreen(
     // namun SEMUA tombol tindakan sensitif (Hapus, Edit, Bayar Cicilan) disembunyikan total (View.GONE).
     val isRestrictedRole = userRole?.uppercase() in listOf("ANGGOTA", "GUEST")
     val canManageUsers = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "DEVELOPER"))
+    val canEditAnggota = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER"))
     val isDeveloper = userRole?.equals("DEVELOPER", ignoreCase = true) == true
     val isBendahara = !isRestrictedRole && (userRole?.uppercase() in listOf("BENDAHARA", "ADMIN", "DEVELOPER"))
     // ADMIN, BENDAHARA, dan DEVELOPER diizinkan input kas/aniv dan menghapus riwayat pembayaran
@@ -436,9 +438,12 @@ fun AnggotaDetailScreen(
                     }
                 },
                 actions = {
-                    if (canManageUsers) {
-                        IconButton(onClick = { navController.navigate("anggota_form?id=${anggota.id}") }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    if (canEditAnggota) {
+                        IconButton(
+                            onClick = { navController.navigate("anggota_form?id=${anggota.id}") },
+                            modifier = Modifier.testTag("btn_topbar_edit_anggota")
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit Anggota", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -516,48 +521,83 @@ fun AnggotaDetailScreen(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (!isGuest) {
-                                    if (anggota.foto != null) {
-                                        Image(
-                                            painter = rememberAsyncImagePainter(anggota.foto),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(80.dp).clip(CircleShape),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Default.Person,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(80.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                }
-                                
-                                Column {
-                                    Text(anggota.nama, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("NRA: ${anggota.nra}", style = MaterialTheme.typography.bodyMedium)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("Nomor Urut: $nomorUrut", style = MaterialTheme.typography.bodyMedium)
-                                    
-                                    if (!isGuest) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Alamat: ${anggota.alamat}", style = MaterialTheme.typography.bodyMedium)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("No HP: ${anggota.nomorTelepon}", style = MaterialTheme.typography.bodyMedium)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        val displayDate = try {
-                                            val sdf = java.text.SimpleDateFormat("dd MMMM yyyy", java.util.Locale("id", "ID"))
-                                            val inputSdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                                            val date = inputSdf.parse(anggota.tanggalBergabung)
-                                            if (date != null) sdf.format(date) else anggota.tanggalBergabung
-                                        } catch (e: Exception) {
-                                            anggota.tanggalBergabung
+                            val displayNama = anggota.nama.trim().ifBlank { "-" }
+                            val displayNra = anggota.nra.trim().ifBlank { "-" }
+                            val displayNomorUrut = anggota.nomorUrut.trim().ifBlank { nomorUrut }.ifBlank { "-" }
+                            val displayAlamat = anggota.alamat.trim().ifBlank { "-" }
+                            val displayNoHp = anggota.nomorTelepon.trim().ifBlank { "-" }
+                            
+                            val rawDate = anggota.tanggalBergabung.trim()
+                            val displayDate = when {
+                                rawDate.isBlank() || rawDate == "0000-00-00" || rawDate == "-" -> "-"
+                                else -> {
+                                    try {
+                                        val sdf = java.text.SimpleDateFormat("dd MMMM yyyy", java.util.Locale("id", "ID"))
+                                        val inputSdf = if (rawDate.contains("-")) {
+                                            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                        } else if (rawDate.contains("/")) {
+                                            java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.US)
+                                        } else {
+                                            null
                                         }
-                                        Text("Tanggal Bergabung: $displayDate", style = MaterialTheme.typography.bodyMedium)
+                                        val date = inputSdf?.parse(rawDate)
+                                        if (date != null) sdf.format(date) else rawDate
+                                    } catch (e: Exception) {
+                                        rawDate
                                     }
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (anggota.foto != null) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(anggota.foto),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(80.dp).clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(80.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Nama: $displayNama", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("NRA: $displayNra", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Nomor Urut: $displayNomorUrut", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Alamat: $displayAlamat", style = MaterialTheme.typography.bodyMedium)
+                                    Text("No HP: $displayNoHp", style = MaterialTheme.typography.bodyMedium)
+                                    Text("Tanggal Bergabung: $displayDate", style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+
+                            if (canEditAnggota) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { navController.navigate("anggota_form?id=${anggota.id}") },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(46.dp)
+                                        .testTag("btn_edit_anggota"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Anggota",
+                                        modifier = Modifier.size(18.dp),
+                                        tint = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "✏️ EDIT ANGGOTA",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
                                 }
                             }
                         }
@@ -963,11 +1003,14 @@ fun AnggotaDetailScreen(
 @Composable
 fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewModel, memberId: Int) {
     val anggota = if (memberId != -1) viewModel.getAnggotaById(memberId).collectAsState(initial = null).value else null
+    val userRole by viewModel.loggedInUserRole.collectAsState()
 
     var nama by remember { mutableStateOf("") }
     var nra by remember { mutableStateOf("") }
+    var nomorUrut by remember { mutableStateOf("") }
     var alamat by remember { mutableStateOf("") }
     var nomorTelepon by remember { mutableStateOf("") }
+    var tanggalBergabung by remember { mutableStateOf("") }
     var statusAktif by remember { mutableStateOf(true) }
     var fotoUri by remember { mutableStateOf<Uri?>(null) }
     var hargaBarangStr by remember { mutableStateOf("") }
@@ -987,8 +1030,10 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
             hasInitialized = true
             nama = anggota.nama
             nra = anggota.nra
+            nomorUrut = anggota.nomorUrut
             alamat = anggota.alamat
             nomorTelepon = anggota.nomorTelepon
+            tanggalBergabung = anggota.tanggalBergabung
             statusAktif = anggota.statusAktif == 1
             hargaBarangStr = if (anggota.hargaBarang == 0.0) "" else anggota.hargaBarang.toInt().toString()
             lamaCicilanStr = if (anggota.lamaCicilan == 0) "" else anggota.lamaCicilan.toString()
@@ -1000,7 +1045,6 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
 
     val hargaBarangVal = hargaBarangStr.toDoubleOrNull() ?: 0.0
     val lamaCicilanVal = lamaCicilanStr.toIntOrNull() ?: 0
-
     val cicilanPerBulanVal = if (lamaCicilanVal > 0) hargaBarangVal / lamaCicilanVal else 0.0
 
     val paymentsState = if (memberId != -1) {
@@ -1018,7 +1062,7 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (memberId == -1) "Tambah Anggota" else "Edit Anggota") },
+                title = { Text(if (memberId == -1) "Tambah Anggota" else "Edit Data Anggota") },
                 navigationIcon = {
                     IconButton(
                         onClick = { navController.popBackStack() },
@@ -1035,7 +1079,12 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
         }
     ) { padding ->
         Column(
-            modifier = Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -1043,12 +1092,19 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
                     Image(
                         painter = rememberAsyncImagePainter(fotoUri),
                         contentDescription = "Foto Anggota",
-                        modifier = Modifier.size(120.dp).clip(CircleShape).clickable { galleryLauncher.launch("image/*") },
+                        modifier = Modifier
+                            .size(120.dp)
+                            .clip(CircleShape)
+                            .clickable { galleryLauncher.launch("image/*") },
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Box(
-                        modifier = Modifier.size(120.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { galleryLauncher.launch("image/*") },
+                        modifier = Modifier
+                            .size(120.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { galleryLauncher.launch("image/*") },
                         contentAlignment = Alignment.Center
                     ) {
                         Text("Pilih Foto")
@@ -1059,64 +1115,82 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
             OutlinedTextField(
                 value = nama,
                 onValueChange = { nama = it },
-                label = { Text("Nama Lengkap") },
-                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Nama Lengkap *") },
+                modifier = Modifier.fillMaxWidth().testTag("input_nama_anggota"),
                 shape = RoundedCornerShape(24.dp)
             )
             OutlinedTextField(
                 value = nra,
                 onValueChange = { nra = it },
-                label = { Text("NRA (Nomor Registrasi Anggota)") },
-                modifier = Modifier.fillMaxWidth(),
+                label = { Text("NRA (Nomor Registrasi Anggota) *") },
+                modifier = Modifier.fillMaxWidth().testTag("input_nra_anggota"),
+                shape = RoundedCornerShape(24.dp)
+            )
+            OutlinedTextField(
+                value = nomorUrut,
+                onValueChange = { nomorUrut = it },
+                label = { Text("Nomor Urut") },
+                modifier = Modifier.fillMaxWidth().testTag("input_nomor_urut_anggota"),
                 shape = RoundedCornerShape(24.dp)
             )
             OutlinedTextField(
                 value = alamat,
                 onValueChange = { alamat = it },
                 label = { Text("Alamat") },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("input_alamat_anggota"),
                 shape = RoundedCornerShape(24.dp)
             )
             OutlinedTextField(
                 value = nomorTelepon,
                 onValueChange = { nomorTelepon = it },
-                label = { Text("Nomor HP") },
+                label = { Text("Nomor HP / WhatsApp") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("input_nohp_anggota"),
                 shape = RoundedCornerShape(24.dp)
             )
             OutlinedTextField(
-                value = hargaBarangStr,
-                onValueChange = { hargaBarangStr = it },
-                label = { Text("Harga Barang") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
+                value = tanggalBergabung,
+                onValueChange = { tanggalBergabung = it },
+                label = { Text("Tanggal Bergabung (contoh: 2024-01-15)") },
+                modifier = Modifier.fillMaxWidth().testTag("input_tgl_gabung_anggota"),
                 shape = RoundedCornerShape(24.dp)
             )
-            OutlinedTextField(
-                value = lamaCicilanStr,
-                onValueChange = { lamaCicilanStr = it },
-                label = { Text("Lama Cicilan (bulan)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp)
-            )
-            OutlinedTextField(
-                value = cicilanPerBulanDisplay,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Cicilan per Bulan") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp)
-            )
-            OutlinedTextField(
-                value = sisaCicilanDisplay,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Sisa Cicilan") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp)
-            )
+
+            if (memberId == -1) {
+                // Kolom cicilan awal hanya saat membuat anggota baru
+                OutlinedTextField(
+                    value = hargaBarangStr,
+                    onValueChange = { hargaBarangStr = it },
+                    label = { Text("Harga Barang (Opsional)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                OutlinedTextField(
+                    value = lamaCicilanStr,
+                    onValueChange = { lamaCicilanStr = it },
+                    label = { Text("Lama Cicilan (bulan)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                OutlinedTextField(
+                    value = cicilanPerBulanDisplay,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Cicilan per Bulan") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                OutlinedTextField(
+                    value = sisaCicilanDisplay,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Sisa Cicilan") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp)
+                )
+            }
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Status Anggota Aktif")
@@ -1127,15 +1201,22 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = {
-                    if (nama.isBlank() || nra.isBlank() || alamat.isBlank() || nomorTelepon.isBlank()) {
-                        Toast.makeText(context, "Semua kolom wajib diisi", Toast.LENGTH_SHORT).show()
+                    if (nama.isBlank()) {
+                        Toast.makeText(context, "Nama lengkap tidak boleh kosong", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    if (hargaBarangVal > 0.0 && lamaCicilanVal < 1) {
+                    if (nra.isBlank()) {
+                        Toast.makeText(context, "NRA tidak boleh kosong", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    if (memberId == -1 && hargaBarangVal > 0.0 && lamaCicilanVal < 1) {
                         Toast.makeText(context, "Lama Cicilan minimal 1 bulan jika Harga Barang diisi", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
+
                     isSaving = true
+                    val currentActiveRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase().ifEmpty { "ADMIN" }
+
                     if (memberId == -1) {
                         // Tambah Anggota langsung ke cPanel via HTTP POST tambah_anggota.php
                         CpanelApiHelper.tambahAnggota(
@@ -1154,16 +1235,16 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
                             totalCicilan = totalPaid,
                             foto = fotoUri?.toString(),
                             onSuccess = {
-                                // 1. Pembersihan form (clear input)
                                 nama = ""
                                 nra = ""
+                                nomorUrut = ""
                                 alamat = ""
                                 nomorTelepon = ""
+                                tanggalBergabung = ""
                                 hargaBarangStr = ""
                                 lamaCicilanStr = ""
                                 fotoUri = null
                                 isSaving = false
-                                // 2. Refresh data di RecyclerView / Dashboard
                                 viewModel.syncFromApi()
                                 (context as? com.example.MainActivity)?.fetchDaftarAnggota()
                                 (context as? com.example.MainActivity)?.fetchDashboardData()
@@ -1174,22 +1255,18 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
                             }
                         )
                     } else {
-                        // Edit Anggota ke cPanel via HTTP POST/PUT anggota.php
+                        // Edit Anggota ke cPanel via HTTP PUT anggota.php (HANYA DATA PRIBADI)
                         CpanelApiHelper.updateAnggota(
                             context = context,
                             id = memberId,
                             nama = nama.trim(),
                             nra = nra.trim(),
+                            nomorUrut = nomorUrut.trim(),
                             alamat = alamat.trim(),
                             nomorTelepon = nomorTelepon.trim(),
-                            role = anggota?.role ?: "ANGGOTA",
+                            tanggalBergabung = tanggalBergabung.trim(),
+                            roleLogin = currentActiveRole,
                             statusAktif = statusAktif,
-                            hargaBarang = hargaBarangVal,
-                            lamaCicilan = lamaCicilanVal,
-                            cicilanPerBulan = cicilanPerBulanVal,
-                            totalTagihan = hargaBarangVal,
-                            sisaCicilan = sisaCicilanVal,
-                            totalCicilan = totalPaid,
                             foto = fotoUri?.toString(),
                             onSuccess = {
                                 isSaving = false
@@ -1204,7 +1281,10 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
                         )
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .testTag("btn_simpan_anggota"),
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 enabled = !isSaving
@@ -1212,7 +1292,7 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
                 if (isSaving) {
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                 } else {
-                    Text("Simpan", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Simpan Perubahan", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }

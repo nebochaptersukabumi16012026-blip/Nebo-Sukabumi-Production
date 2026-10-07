@@ -353,8 +353,33 @@ fun PembayaranFormScreen(
                                         isSaving = false
                                     }
                                 )
+                            } else if (jenisPembayaran.equals("CICILAN", ignoreCase = true)) {
+                                // Cicilan langsung ke cPanel API cicilan.php dengan Single Source of Truth
+                                CpanelApiHelper.inputCicilan(
+                                    context = context,
+                                    anggotaId = anggota.id,
+                                    nominal = nominal,
+                                    keterangan = keterangan.ifBlank { "Pembayaran Cicilan" },
+                                    role = roleCurrent,
+                                    onSuccess = {
+                                        isSaving = false
+                                        lastSavedNominal = nominal
+                                        paymentSaved = true
+                                        nominalStr = ""
+                                        keterangan = ""
+                                        buktiUri = null
+                                        // Refresh data dari API cPanel (Single Source of Truth)
+                                        viewModel.syncFromApi()
+                                        viewModel.fetchCicilanAktif()
+                                        (context as? com.example.MainActivity)?.fetchDashboardData()
+                                        (context as? com.example.MainActivity)?.fetchDaftarAnggota()
+                                    },
+                                    onError = { _ ->
+                                        isSaving = false
+                                    }
+                                )
                             } else {
-                                // Cicilan atau Anniversary langsung ke cPanel API pembayaran.php
+                                // Anniversary langsung ke cPanel API pembayaran.php
                                 CpanelApiHelper.inputPembayaran(
                                     context = context,
                                     anggotaId = anggota.id,

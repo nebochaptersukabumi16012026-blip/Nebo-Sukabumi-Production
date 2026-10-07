@@ -467,11 +467,12 @@ class CommunityRepository(
             }
         } else if (pembayaran.jenisPembayaran.equals("CICILAN", ignoreCase = true)) {
             try { 
+                val dateFormatted = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date(pembayaran.tanggalBayar))
                 ApiClient.apiService.addCicilan(CicilanDto(
                     anggota_id = pembayaran.anggotaId,
                     nominal = pembayaran.nominal,
-                    tanggal = pembayaran.tanggalBayar.toString(),
-                    keterangan = pembayaran.keterangan
+                    tanggal = dateFormatted,
+                    keterangan = pembayaran.keterangan ?: "Pembayaran Cicilan"
                 )) 
             } catch (e: Exception) {}
         } else if (pembayaran.jenisPembayaran.equals("KAS", ignoreCase = true)) {
@@ -604,6 +605,27 @@ class CommunityRepository(
                 val body = response.body() ?: BaseResponse("error", "Empty body")
                 syncFromApi()
                 body
+            } else {
+                BaseResponse("error", "HTTP ${response.code()}")
+            }
+        } catch (e: Exception) {
+            BaseResponse("error", e.message)
+        }
+    }
+
+    suspend fun updateCicilan(id: Int, anggotaId: Int, nominal: Double, keterangan: String): BaseResponse<Any> {
+        return try {
+            val dateFormatted = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+            val response = ApiClient.apiService.updateCicilan(CicilanDto(
+                id = id,
+                anggota_id = anggotaId,
+                nominal = nominal,
+                tanggal = dateFormatted,
+                keterangan = keterangan
+            ))
+            if (response.isSuccessful) {
+                syncFromApi()
+                response.body() ?: BaseResponse("success", "Cicilan berhasil diupdate")
             } else {
                 BaseResponse("error", "HTTP ${response.code()}")
             }

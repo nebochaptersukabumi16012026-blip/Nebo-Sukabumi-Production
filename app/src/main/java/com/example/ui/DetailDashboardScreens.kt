@@ -1119,7 +1119,7 @@ fun DaftarCicilanAnggotaScreen(navController: NavController, viewModel: Communit
                                 Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFCA5A5))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Gagal memuat data dari server cPanel: $cicilanApiError",
+                                    text = cicilanApiError ?: "Gagal mengambil data cicilan dari server.",
                                     color = Color.White,
                                     style = MaterialTheme.typography.bodySmall
                                 )

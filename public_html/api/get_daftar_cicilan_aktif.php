@@ -78,32 +78,47 @@ try {
             $params[] = $user_nra;
         }
 
-        $query = "SELECT id, nama, nra, 
-                         COALESCE(harga_barang, 0) AS harga_barang, 
-                         COALESCE(total_cicilan, 0) AS sudah_dibayar, 
+        $whereClauseMember = $isMemberOnly ? " AND a.nra = ?" : "";
+        $query = "SELECT a.id, a.nama, a.nra, 
+                         COALESCE(a.harga_barang, 0) AS harga_barang, 
+                         COALESCE(c.total_bayar, a.total_cicilan, 0) AS sudah_dibayar, 
                          CASE 
-                             WHEN COALESCE(sisa_cicilan, 0) > 0 
-                                  THEN COALESCE(sisa_cicilan, 0) 
-                             ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) 
+                             WHEN COALESCE(a.harga_barang, 0) > 0 
+                                  THEN GREATEST(0, COALESCE(a.harga_barang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) 
+                             ELSE GREATEST(0, COALESCE(a.sisa_cicilan, 0)) 
                          END AS sisa_cicilan, 
-                         COALESCE(cicilan_per_bulan, 0) AS cicilan_per_bulan 
-                  FROM anggota 
-                  WHERE $whereClause
+                         COALESCE(a.cicilan_per_bulan, 0) AS cicilan_per_bulan 
+                  FROM anggota a
+                  LEFT JOIN (
+                      SELECT anggota_id, COALESCE(SUM(nominal), 0) AS total_bayar 
+                      FROM cicilan 
+                      GROUP BY anggota_id
+                  ) c ON a.id = c.anggota_id
+                  WHERE ((COALESCE(a.harga_barang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0) > 0) OR COALESCE(a.sisa_cicilan, 0) > 0)
+                  $whereClauseMember
                   ORDER BY sisa_cicilan DESC";
         $stmt = $conn->prepare($query);
         $stmt->execute($params);
         $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : array();
 
-        // Rekapitulasi dari tabel anggota
+        // Rekapitulasi dari tabel anggota & cicilan
         $queryRekap = "SELECT 
-                          COALESCE(SUM(COALESCE(harga_barang, 0)), 0) AS total_harga_barang,
-                          COALESCE(SUM(COALESCE(total_cicilan, 0)), 0) AS total_sudah_dibayar,
-                          COALESCE(SUM(CASE WHEN COALESCE(sisa_cicilan, 0) > 0 
-                                            THEN COALESCE(sisa_cicilan, 0) 
-                                            ELSE (COALESCE(harga_barang, 0) - COALESCE(total_cicilan, 0)) END), 0) AS total_sisa_cicilan,
-                          COUNT(DISTINCT nra) AS anggota_mencicil
-                       FROM anggota 
-                       WHERE $whereClause";
+                          COALESCE(SUM(COALESCE(a.harga_barang, 0)), 0) AS total_harga_barang,
+                          COALESCE(SUM(COALESCE(c.total_bayar, a.total_cicilan, 0)), 0) AS total_sudah_dibayar,
+                          COALESCE(SUM(CASE 
+                              WHEN COALESCE(a.harga_barang, 0) > 0 
+                                   THEN GREATEST(0, COALESCE(a.harga_barang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) 
+                              ELSE GREATEST(0, COALESCE(a.sisa_cicilan, 0)) 
+                          END), 0) AS total_sisa_cicilan,
+                          COUNT(DISTINCT a.nra) AS anggota_mencicil
+                       FROM anggota a
+                       LEFT JOIN (
+                           SELECT anggota_id, COALESCE(SUM(nominal), 0) AS total_bayar 
+                           FROM cicilan 
+                           GROUP BY anggota_id
+                       ) c ON a.id = c.anggota_id
+                       WHERE ((COALESCE(a.harga_barang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0) > 0) OR COALESCE(a.sisa_cicilan, 0) > 0)
+                       $whereClauseMember";
         $stmtRekap = $conn->prepare($queryRekap);
         $stmtRekap->execute($params);
         if ($stmtRekap && $rowR = $stmtRekap->fetch(PDO::FETCH_ASSOC)) {

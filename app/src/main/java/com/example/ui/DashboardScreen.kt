@@ -204,7 +204,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
 
     val isCicilanError = cicilanApiErrorVal != null && cicilanAktifList.isEmpty() && dashboardData == null
     val totalSisaCicilanStr = when {
-        isCicilanError -> "Gagal memuat"
+        isCicilanError -> "Gagal mengambil data cicilan dari server."
         dashboardData != null || anggotaList.isNotEmpty() || cicilanAktifList.isNotEmpty() -> formatRupiah(actualSisaCicilan)
         else -> "Memuat..."
     }
@@ -599,99 +599,8 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
             }
 
             // ========================================================
-            // 2. CARD LAPORAN KEUANGAN (REKAPITULASI KAS)
-            // ========================================================
-            item {
-                Text(
-                    text = "📊 Laporan Rekapitulasi Kas",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = Color.White,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-
-            // Grid 2x2 Navigation/Action Menu
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Row 1: Laporan Kas & Cetak PDF
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = { onNavigateFinance("laporan") },
-                            modifier = Modifier.weight(1f).testTag("btn_laporan_kas_main"),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(vertical = 12.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.Assessment, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("📊 Laporan Kas", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                        }
-
-                        Button(
-                            onClick = { openPdfKeuangan(context) },
-                            modifier = Modifier.weight(1f).testTag("btn_pdf_keuangan_main"),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(vertical = 12.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("📄 Cetak PDF", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                        }
-                    }
-
-                    // Row 2: Bagikan WA & Refresh Data
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                shareLaporanKeuanganWhatsApp(
-                                    context = context,
-                                    kasIn = formatRupiah(grandTotalPemasukanKK),
-                                    kasOut = formatRupiah(grandTotalPengeluaranKK),
-                                    saldoKas = totalKasKelilingSaldoStr,
-                                    totalAniv = totalAnivStr,
-                                    totalAnggota = totalAnggota
-                                )
-                            },
-                            modifier = Modifier.weight(1f).testTag("btn_share_whatsapp_main"),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(vertical = 12.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("💬 Bagikan WA", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                        }
-
-                        Button(
-                            onClick = {
-                                (context as? com.example.MainActivity)?.fetchDashboardData()
-                                (context as? com.example.MainActivity)?.autoRefreshSession()
-                                (context as? com.example.MainActivity)?.syncAllDataRealtime()
-                            },
-                            modifier = Modifier.weight(1f).testTag("btn_refresh_main"),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(vertical = 12.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("🔄 Refresh Data", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                        }
-                    }
-                }
-            }
-
             // 2. KARTU KEUANGAN 2 KOLOM MENYAMPING (GRID 2X2 TERPISAH)
+            // ========================================================
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     // BARIS 1: SALDO KAS (KIRI) | KAS ANNIVERSARY (KANAN)
@@ -968,7 +877,7 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
 
                             if (isCicilanError) {
                                 Text(
-                                    text = "Status: Terjadi kendala saat menghubungkan ke endpoint cicilan (${cicilanApiErrorVal ?: "Server Error"})",
+                                    text = "Status: Gagal mengambil data cicilan dari server.",
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                     color = Color(0xFFF87171)
                                 )

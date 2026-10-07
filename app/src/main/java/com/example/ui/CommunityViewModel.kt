@@ -142,7 +142,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                 val list = repository.getDaftarCicilanAktif()
                 _cicilanAktifList.value = list
             } catch (e: Exception) {
-                _cicilanApiError.value = e.message ?: "Gagal mengambil data cicilan dari server"
+                _cicilanApiError.value = "Gagal mengambil data cicilan dari server."
                 android.util.Log.e("CICILAN_VM", "fetchCicilanAktif error: ${e.message}")
             }
         }
@@ -2021,36 +2021,47 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun exportToPdf(context: Context, title: String, content: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val lines = content.split("\n")
-                val lineCount = lines.size
-                val pageHeight = maxOf(800, lineCount * 18 + 100)
-                
+                val settings = communitySettings.value
+                val communityName = settings.community_name.ifEmpty { "NEBO SUKABUMI" }
+                val logoPath = settings.community_logo
+                val logoBitmap = loadLogoBitmap(context, logoPath)
+
                 val pdfDocument = PdfDocument()
-                val pageInfo = PdfDocument.PageInfo.Builder(600, pageHeight, 1).create()
-                val page = pdfDocument.startPage(pageInfo)
-                val canvas: Canvas = page.canvas
-                val paint = Paint()
-                paint.color = Color.BLACK
-                paint.textSize = 10f
-                paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-                
-                var yPos = 30f
-                canvas.drawText(title, 15f, yPos, paint)
-                yPos += 25f
-                
-                lines.forEach { line ->
-                    canvas.drawText(line, 15f, yPos, paint)
-                    yPos += 15f
+                val totalPages = maxOf(1, (lines.size * 16 + 180) / 700)
+                val pdfCreator = PdfCreatorHelper(
+                    pdfDocument = pdfDocument,
+                    title = title,
+                    communityName = communityName,
+                    logoBitmap = logoBitmap,
+                    totalPages = totalPages
+                )
+                val paint = Paint().apply {
+                    color = Color.rgb(15, 23, 42)
+                    textSize = 8.5f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    isAntiAlias = true
                 }
-                
-                pdfDocument.finishPage(page)
-                
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val file = File(downloadsDir, "Laporan_${System.currentTimeMillis()}.pdf")
-                pdfDocument.writeTo(FileOutputStream(file))
+
+                var yPos = pdfCreator.yPos
+                lines.forEach { line ->
+                    pdfCreator.yPos = yPos
+                    pdfCreator.checkNewPage(16f) {}
+                    yPos = pdfCreator.yPos
+                    pdfCreator.canvas.drawText(line, 36f, yPos, paint)
+                    yPos += 16f
+                }
+
+                pdfCreator.finish()
+
+                val fileName = "Laporan_${System.currentTimeMillis()}.pdf"
+                val tempFile = File(context.cacheDir, fileName)
+                pdfDocument.writeTo(FileOutputStream(tempFile))
                 pdfDocument.close()
+
+                savePdfToPublicDownloads(context, tempFile, fileName)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2122,94 +2133,105 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         val communityName = settings.community_name.ifEmpty { "NEBO SUKABUMI" }
         val logoPath = settings.community_logo
         val logoBitmap = loadLogoBitmap(context, logoPath)
-        
-        val title = "Laporan Data Cicilan"
-        val pdfCreator = PdfCreatorHelper(pdfDocument, title, communityName, logoBitmap)
+
+        val filteredAnggota = allAnggota.value.filter { it.hargaBarang > 0.0 }
+        val totalPages = estimateTotalPages(filteredAnggota.size, 150f)
+
+        val title = "Laporan Data Cicilan Anggota"
+        val pdfCreator = PdfCreatorHelper(
+            pdfDocument = pdfDocument,
+            title = title,
+            communityName = communityName,
+            logoBitmap = logoBitmap,
+            totalPages = totalPages,
+            periodeText = "Kategori: Fasilitas Kredit Internal Komunitas"
+        )
         val paint = Paint()
-        
+
         var rowY = pdfCreator.yPos
         drawTableHeaderCicilan(pdfCreator.canvas, rowY, paint)
-        rowY += 20f
-        
-        val filteredAnggota = allAnggota.value.filter { it.hargaBarang > 0.0 }
-        
+        rowY += 22f
+
         filteredAnggota.forEachIndexed { idx, member ->
             pdfCreator.yPos = rowY
-            pdfCreator.checkNewPage(18f) {
+            pdfCreator.checkNewPage(20f) {
                 drawTableHeaderCicilan(pdfCreator.canvas, pdfCreator.yPos, paint)
-                pdfCreator.yPos += 20f
+                pdfCreator.yPos += 22f
             }
             rowY = pdfCreator.yPos
-            
+
             val canvas = pdfCreator.canvas
+
+            // Zebra striping
+            if (idx % 2 == 1) {
+                paint.color = Color.rgb(248, 250, 252)
+                paint.style = Paint.Style.FILL
+                canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+            }
+
             paint.color = Color.rgb(226, 232, 240)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 0.5f
-            canvas.drawRect(36f, rowY, 558f, rowY + 18f, paint)
-            
-            val cols = listOf(61f, 171f, 236f, 311f, 346f, 421f, 496f)
+            canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+
+            val cols = listOf(60f, 165f, 230f, 304f, 340f, 414f, 489f)
             cols.forEach { x ->
-                canvas.drawLine(x, rowY, x, rowY + 18f, paint)
+                canvas.drawLine(x, rowY, x, rowY + 20f, paint)
             }
-            
-            paint.color = Color.BLACK
+
+            paint.color = Color.rgb(15, 23, 42)
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             paint.textSize = 8f
             paint.style = Paint.Style.FILL
-            
-            val yText = rowY + 12f
+
+            val yText = rowY + 13.5f
             val statusText = if (member.sisaCicilan <= 0.0) "Lunas" else "Belum Lunas"
-            
-            drawCellText(canvas, (idx + 1).toString(), 36f, 25f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, member.nama, 61f, 110f, yText, paint, Paint.Align.LEFT)
-            drawCellText(canvas, "Barang", 171f, 65f, yText, paint, Paint.Align.LEFT)
-            drawCellText(canvas, formatRupiah(member.hargaBarang), 236f, 75f, yText, paint, Paint.Align.RIGHT)
-            drawCellText(canvas, "${member.lamaCicilan} Bln", 311f, 35f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, formatRupiah(member.cicilanPerBulan), 346f, 75f, yText, paint, Paint.Align.RIGHT)
-            drawCellText(canvas, formatRupiah(member.sisaCicilan), 421f, 75f, yText, paint, Paint.Align.RIGHT)
-            
-            paint.color = if (member.sisaCicilan <= 0.0) Color.rgb(21, 128, 61) else Color.rgb(185, 28, 28)
+
+            drawCellText(canvas, (idx + 1).toString(), 36f, 24f, yText, paint, Paint.Align.CENTER)
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            drawCellText(canvas, statusText, 496f, 62f, yText, paint, Paint.Align.CENTER)
-            
-            rowY += 18f
+            drawCellText(canvas, member.nama, 60f, 105f, yText, paint, Paint.Align.LEFT)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            drawCellText(canvas, "Barang", 165f, 65f, yText, paint, Paint.Align.LEFT)
+            drawCellText(canvas, formatRupiah(member.hargaBarang), 230f, 74f, yText, paint, Paint.Align.RIGHT)
+            drawCellText(canvas, "${member.lamaCicilan} Bln", 304f, 36f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, formatRupiah(member.cicilanPerBulan), 340f, 74f, yText, paint, Paint.Align.RIGHT)
+            drawCellText(canvas, formatRupiah(member.sisaCicilan), 414f, 75f, yText, paint, Paint.Align.RIGHT)
+
+            paint.color = if (member.sisaCicilan <= 0.0) Color.rgb(22, 163, 74) else Color.rgb(220, 38, 38)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            drawCellText(canvas, statusText, 489f, 70f, yText, paint, Paint.Align.CENTER)
+
+            rowY += 20f
         }
-        
+
         pdfCreator.yPos = rowY
-        pdfCreator.checkNewPage(80f) {}
+        pdfCreator.checkNewPage(145f) {}
         rowY = pdfCreator.yPos
-        
-        val canvas = pdfCreator.canvas
-        paint.color = Color.rgb(15, 23, 42)
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(36f, rowY + 5f, 558f, rowY + 75f, paint)
-        
-        paint.color = Color.WHITE
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 9f
-        
+
         val totalHargaBarang = filteredAnggota.sumOf { it.hargaBarang }
         val totalSisaCicilan = filteredAnggota.sumOf { it.sisaCicilan }
         val totalLunas = filteredAnggota.count { it.hargaBarang > 0.0 && it.sisaCicilan <= 0.0 }
         val totalBelumLunas = filteredAnggota.count { it.hargaBarang > 0.0 && it.sisaCicilan > 0.0 }
-        
-        canvas.drawText("RINGKASAN LAPORAN:", 46f, rowY + 22f, paint)
-        
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        paint.textSize = 8f
-        canvas.drawText("Total Harga Barang : ${formatRupiah(totalHargaBarang)}", 46f, rowY + 40f, paint)
-        canvas.drawText("Total Sisa Cicilan : ${formatRupiah(totalSisaCicilan)}", 46f, rowY + 55f, paint)
-        
-        canvas.drawText("Anggota Lunas       : $totalLunas Orang", 320f, rowY + 40f, paint)
-        canvas.drawText("Anggota Belum Lunas : $totalBelumLunas Orang", 320f, rowY + 55f, paint)
-        
+
+        val summaryY = drawExecutiveCicilanSummary(
+            canvas = pdfCreator.canvas,
+            startY = rowY + 10f,
+            paint = paint,
+            totalHarga = totalHargaBarang,
+            totalSisa = totalSisaCicilan,
+            lunasCount = totalLunas,
+            belumLunasCount = totalBelumLunas
+        )
+
+        drawDocumentSignatures(pdfCreator.canvas, summaryY + 12f, paint)
+
         pdfCreator.finish()
-        
+
         val docsDir = File(context.cacheDir, "documents").apply { mkdirs() }
         val file = File(docsDir, "Laporan_Data_Cicilan.pdf")
         pdfDocument.writeTo(FileOutputStream(file))
         pdfDocument.close()
-        
+
         return file
     }
 
@@ -2219,45 +2241,61 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         val communityName = settings.community_name.ifEmpty { "NEBO SUKABUMI" }
         val logoPath = settings.community_logo
         val logoBitmap = loadLogoBitmap(context, logoPath)
-        
-        val title = "Laporan Riwayat Pembayaran Cicilan"
-        val pdfCreator = PdfCreatorHelper(pdfDocument, title, communityName, logoBitmap)
-        val paint = Paint()
-        
-        var rowY = pdfCreator.yPos
-        drawTableHeaderRiwayat(pdfCreator.canvas, rowY, paint)
-        rowY += 20f
-        
+
         val installmentPayments = allPembayaran.value
             .filter { it.jenisPembayaran == "CICILAN" }
             .sortedBy { it.tanggalBayar }
-        
+        val totalPages = estimateTotalPages(installmentPayments.size, 150f)
+
+        val title = "Laporan Riwayat Pembayaran Cicilan"
+        val pdfCreator = PdfCreatorHelper(
+            pdfDocument = pdfDocument,
+            title = title,
+            communityName = communityName,
+            logoBitmap = logoBitmap,
+            totalPages = totalPages,
+            periodeText = "Kategori: Log Transaksi Masuk Cicilan"
+        )
+        val paint = Paint()
+
+        var rowY = pdfCreator.yPos
+        drawTableHeaderRiwayat(pdfCreator.canvas, rowY, paint)
+        rowY += 22f
+
         installmentPayments.forEachIndexed { idx, payment ->
             pdfCreator.yPos = rowY
-            pdfCreator.checkNewPage(18f) {
+            pdfCreator.checkNewPage(20f) {
                 drawTableHeaderRiwayat(pdfCreator.canvas, pdfCreator.yPos, paint)
-                pdfCreator.yPos += 20f
+                pdfCreator.yPos += 22f
             }
             rowY = pdfCreator.yPos
-            
+
             val canvas = pdfCreator.canvas
+
+            // Zebra striping
+            if (idx % 2 == 1) {
+                paint.color = Color.rgb(248, 250, 252)
+                paint.style = Paint.Style.FILL
+                canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+            }
+
             paint.color = Color.rgb(226, 232, 240)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 0.5f
-            canvas.drawRect(36f, rowY, 558f, rowY + 18f, paint)
-            
-            val cols = listOf(61f, 186f, 271f, 356f, 446f)
+            canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+
+            val cols = listOf(60f, 175f, 255f, 345f, 435f)
             cols.forEach { x ->
-                canvas.drawLine(x, rowY, x, rowY + 18f, paint)
+                canvas.drawLine(x, rowY, x, rowY + 20f, paint)
             }
-            
-            paint.color = Color.BLACK
+
+            paint.color = Color.rgb(15, 23, 42)
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             paint.textSize = 8f
             paint.style = Paint.Style.FILL
-            
-            val yText = rowY + 12f
-            
+
+            val yText = rowY + 13.5f
+
             val member = allAnggota.value.find { it.id == payment.anggotaId }
             val sisaAfter = if (member != null) {
                 val memberPayments = installmentPayments.filter { it.anggotaId == member.id }
@@ -2272,49 +2310,45 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
             } else {
                 0.0
             }
-            
-            drawCellText(canvas, (idx + 1).toString(), 36f, 25f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, payment.anggotaNama, 61f, 125f, yText, paint, Paint.Align.LEFT)
-            drawCellText(canvas, formatDate(payment.tanggalBayar), 186f, 85f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, formatRupiah(payment.nominal), 271f, 85f, yText, paint, Paint.Align.RIGHT)
-            drawCellText(canvas, formatRupiah(sisaAfter), 356f, 90f, yText, paint, Paint.Align.RIGHT)
-            drawCellText(canvas, payment.keterangan.ifEmpty { "Pembayaran Cicilan" }, 446f, 112f, yText, paint, Paint.Align.LEFT)
-            
-            rowY += 18f
+
+            drawCellText(canvas, (idx + 1).toString(), 36f, 24f, yText, paint, Paint.Align.CENTER)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            drawCellText(canvas, payment.anggotaNama, 60f, 115f, yText, paint, Paint.Align.LEFT)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            drawCellText(canvas, formatDate(payment.tanggalBayar), 175f, 80f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, formatRupiah(payment.nominal), 255f, 90f, yText, paint, Paint.Align.RIGHT)
+            drawCellText(canvas, formatRupiah(sisaAfter), 345f, 90f, yText, paint, Paint.Align.RIGHT)
+            drawCellText(canvas, payment.keterangan.ifEmpty { "Pembayaran Cicilan" }, 435f, 124f, yText, paint, Paint.Align.LEFT)
+
+            rowY += 20f
         }
-        
+
         pdfCreator.yPos = rowY
-        pdfCreator.checkNewPage(70f) {}
+        pdfCreator.checkNewPage(145f) {}
         rowY = pdfCreator.yPos
-        
-        val canvas = pdfCreator.canvas
-        paint.color = Color.rgb(15, 23, 42)
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(36f, rowY + 5f, 558f, rowY + 65f, paint)
-        
-        paint.color = Color.WHITE
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 9f
-        
+
         val totalNominal = installmentPayments.sumOf { it.nominal }
         val totalTransaksi = installmentPayments.size
         val tanggalCetak = formatDate(System.currentTimeMillis())
-        
-        canvas.drawText("RINGKASAN RIWAYAT PEMBAYARAN:", 46f, rowY + 22f, paint)
-        
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        paint.textSize = 8f
-        canvas.drawText("Total Pembayaran  : ${formatRupiah(totalNominal)}", 46f, rowY + 40f, paint)
-        canvas.drawText("Jumlah Transaksi  : $totalTransaksi Transaksi", 46f, rowY + 50f, paint)
-        canvas.drawText("Tanggal Cetak     : $tanggalCetak", 320f, rowY + 40f, paint)
-        
+
+        val summaryY = drawExecutiveRiwayatSummary(
+            canvas = pdfCreator.canvas,
+            startY = rowY + 10f,
+            paint = paint,
+            totalNominal = totalNominal,
+            totalTransaksi = totalTransaksi,
+            tanggalCetak = tanggalCetak
+        )
+
+        drawDocumentSignatures(pdfCreator.canvas, summaryY + 12f, paint)
+
         pdfCreator.finish()
-        
+
         val docsDir = File(context.cacheDir, "documents").apply { mkdirs() }
         val file = File(docsDir, "Riwayat_Pembayaran_Cicilan.pdf")
         pdfDocument.writeTo(FileOutputStream(file))
         pdfDocument.close()
-        
+
         return file
     }
 
@@ -2459,15 +2493,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         val communityName = settings.community_name.ifEmpty { "NEBO SUKABUMI" }
         val logoPath = settings.community_logo
         val logoBitmap = loadLogoBitmap(context, logoPath)
-        
-        val title = "Laporan Keuangan - Uang Kas"
-        val pdfCreator = PdfCreatorHelper(pdfDocument, title, communityName, logoBitmap)
-        val paint = Paint()
-        
-        var rowY = pdfCreator.yPos
-        drawTableHeaderKeuangan(pdfCreator.canvas, rowY, paint)
-        rowY += 20f
-        
+
         val detailKas = detailKasState.value
         val memberIncomes = if (detailKas != null && !detailKas.riwayat.isNullOrEmpty()) {
             detailKas.riwayat.map { 
@@ -2488,7 +2514,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                 )
             }
         }
-            
+
         val expenses = allPengeluaran.value
             .filter { 
                 it.jenisKas in listOf("Saldo Kas", "Kas", "Kas Utama", "Uang Kas", "") || 
@@ -2499,85 +2525,99 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                  !it.jenisKas.equals("Cicilan", ignoreCase = true))
             }
             .map { PdfTransaction(it.tanggal, "Pengeluaran: ${it.keterangan}", "Keluar", it.nominal) }
-            
+
         val transactions = (memberIncomes + expenses)
-        
+        val totalPages = estimateTotalPages(transactions.size, 150f)
+
+        val title = "Laporan Keuangan - Uang Kas"
+        val pdfCreator = PdfCreatorHelper(
+            pdfDocument = pdfDocument,
+            title = title,
+            communityName = communityName,
+            logoBitmap = logoBitmap,
+            totalPages = totalPages,
+            periodeText = "Kategori: Kas Utama Komunitas"
+        )
+        val paint = Paint()
+
+        var rowY = pdfCreator.yPos
+        drawTableHeaderKeuangan(pdfCreator.canvas, rowY, paint)
+        rowY += 22f
+
         transactions.forEachIndexed { idx, tx ->
             pdfCreator.yPos = rowY
-            pdfCreator.checkNewPage(18f) {
+            pdfCreator.checkNewPage(20f) {
                 drawTableHeaderKeuangan(pdfCreator.canvas, pdfCreator.yPos, paint)
-                pdfCreator.yPos += 20f
+                pdfCreator.yPos += 22f
             }
             rowY = pdfCreator.yPos
-            
+
             val canvas = pdfCreator.canvas
+
+            // Zebra striping
+            if (idx % 2 == 1) {
+                paint.color = Color.rgb(248, 250, 252)
+                paint.style = Paint.Style.FILL
+                canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+            }
+
             paint.color = Color.rgb(226, 232, 240)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 0.5f
-            canvas.drawRect(36f, rowY, 558f, rowY + 18f, paint)
-            
-            val cols = listOf(61f, 156f, 366f, 446f)
+            canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+
+            val cols = listOf(62f, 137f, 369f, 424f)
             cols.forEach { x ->
-                canvas.drawLine(x, rowY, x, rowY + 18f, paint)
+                canvas.drawLine(x, rowY, x, rowY + 20f, paint)
             }
-            
-            paint.color = Color.BLACK
+
+            paint.color = Color.rgb(15, 23, 42)
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             paint.textSize = 8f
             paint.style = Paint.Style.FILL
-            
-            val yText = rowY + 12f
-            
-            drawCellText(canvas, (idx + 1).toString(), 36f, 25f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, formatDate(tx.tanggal), 61f, 95f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, tx.keterangan, 156f, 210f, yText, paint, Paint.Align.LEFT)
-            
-            paint.color = if (tx.jenis == "Masuk") Color.rgb(21, 128, 61) else Color.rgb(185, 28, 28)
-            drawCellText(canvas, tx.jenis, 366f, 80f, yText, paint, Paint.Align.CENTER)
-            
-            paint.color = Color.BLACK
-            drawCellText(canvas, formatRupiah(tx.nominal), 446f, 112f, yText, paint, Paint.Align.RIGHT)
-            
-            rowY += 18f
+
+            val yText = rowY + 13.5f
+
+            drawCellText(canvas, (idx + 1).toString(), 36f, 26f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, formatDate(tx.tanggal), 62f, 75f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, tx.keterangan, 137f, 232f, yText, paint, Paint.Align.LEFT)
+
+            paint.color = if (tx.jenis == "Masuk") Color.rgb(22, 163, 74) else Color.rgb(220, 38, 38)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            drawCellText(canvas, tx.jenis, 369f, 55f, yText, paint, Paint.Align.CENTER)
+
+            paint.color = Color.rgb(15, 23, 42)
+            drawCellText(canvas, formatRupiah(tx.nominal), 424f, 135f, yText, paint, Paint.Align.RIGHT)
+
+            rowY += 20f
         }
-        
+
         pdfCreator.yPos = rowY
-        pdfCreator.checkNewPage(70f) {}
+        pdfCreator.checkNewPage(145f) {}
         rowY = pdfCreator.yPos
-        
-        val canvas = pdfCreator.canvas
-        paint.color = Color.rgb(15, 23, 42)
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(36f, rowY + 5f, 558f, rowY + 65f, paint)
-        
-        paint.color = Color.WHITE
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 9f
-        
+
         val totalMasuk = detailKas?.total_pemasukan ?: memberIncomes.sumOf { it.nominal }
         val totalKeluar = detailKas?.total_pengeluaran ?: expenses.sumOf { it.nominal }
         val saldo = detailKas?.saldo ?: (totalMasuk - totalKeluar)
-        val tanggalCetak = formatDate(System.currentTimeMillis())
-        
-        canvas.drawText("RINGKASAN AUDIT LAPORAN UANG KAS:", 46f, rowY + 22f, paint)
-        
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        paint.textSize = 8f
-        canvas.drawText("Total Pemasukan  : ${formatRupiah(totalMasuk)}", 46f, rowY + 40f, paint)
-        canvas.drawText("Total Pengeluaran : ${formatRupiah(totalKeluar)}", 46f, rowY + 50f, paint)
-        
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("Saldo Akhir Kas   : ${formatRupiah(saldo)}", 320f, rowY + 40f, paint)
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        canvas.drawText("Tanggal Cetak     : $tanggalCetak", 320f, rowY + 50f, paint)
-        
+
+        val summaryY = drawExecutiveFinancialSummary(
+            canvas = pdfCreator.canvas,
+            startY = rowY + 10f,
+            paint = paint,
+            masuk = totalMasuk,
+            keluar = totalKeluar,
+            saldo = saldo
+        )
+
+        drawDocumentSignatures(pdfCreator.canvas, summaryY + 12f, paint)
+
         pdfCreator.finish()
-        
+
         val docsDir = File(context.cacheDir, "documents").apply { mkdirs() }
         val file = File(docsDir, "Laporan_Uang_Kas.pdf")
         pdfDocument.writeTo(FileOutputStream(file))
         pdfDocument.close()
-        
+
         return file
     }
 
@@ -2601,101 +2641,107 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         val communityName = settings.community_name.ifEmpty { "NEBO SUKABUMI" }
         val logoPath = settings.community_logo
         val logoBitmap = loadLogoBitmap(context, logoPath)
-        
-        val title = "Laporan Keuangan - Kas Anniversary"
-        val pdfCreator = PdfCreatorHelper(pdfDocument, title, communityName, logoBitmap)
-        val paint = Paint()
-        
-        var rowY = pdfCreator.yPos
-        drawTableHeaderKeuangan(pdfCreator.canvas, rowY, paint)
-        rowY += 20f
-        
+
         val incomes = allPembayaran.value
             .filter { it.jenisPembayaran == "ANIV" }
             .map { PdfTransaction(it.tanggalBayar, "Pemasukan dari ${it.anggotaNama} ${if (it.keterangan.isNotEmpty()) "(${it.keterangan})" else ""}", "Masuk", it.nominal) }
-            
+
         val expenses = allPengeluaran.value
             .filter { it.jenisKas == "Kas Aniv" }
             .map { PdfTransaction(it.tanggal, "Pengeluaran: ${it.keterangan}", "Keluar", it.nominal) }
-            
+
         val transactions = (incomes + expenses).sortedBy { it.tanggal }
-        
+        val totalPages = estimateTotalPages(transactions.size, 150f)
+
+        val title = "Laporan Keuangan - Kas Anniversary"
+        val pdfCreator = PdfCreatorHelper(
+            pdfDocument = pdfDocument,
+            title = title,
+            communityName = communityName,
+            logoBitmap = logoBitmap,
+            totalPages = totalPages,
+            periodeText = "Kategori: Dana Peringatan Anniversary Komunitas"
+        )
+        val paint = Paint()
+
+        var rowY = pdfCreator.yPos
+        drawTableHeaderKeuangan(pdfCreator.canvas, rowY, paint)
+        rowY += 22f
+
         transactions.forEachIndexed { idx, tx ->
             pdfCreator.yPos = rowY
-            pdfCreator.checkNewPage(18f) {
+            pdfCreator.checkNewPage(20f) {
                 drawTableHeaderKeuangan(pdfCreator.canvas, pdfCreator.yPos, paint)
-                pdfCreator.yPos += 20f
+                pdfCreator.yPos += 22f
             }
             rowY = pdfCreator.yPos
-            
+
             val canvas = pdfCreator.canvas
+
+            // Zebra striping
+            if (idx % 2 == 1) {
+                paint.color = Color.rgb(248, 250, 252)
+                paint.style = Paint.Style.FILL
+                canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+            }
+
             paint.color = Color.rgb(226, 232, 240)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 0.5f
-            canvas.drawRect(36f, rowY, 558f, rowY + 18f, paint)
-            
-            val cols = listOf(61f, 156f, 366f, 446f)
+            canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+
+            val cols = listOf(62f, 137f, 369f, 424f)
             cols.forEach { x ->
-                canvas.drawLine(x, rowY, x, rowY + 18f, paint)
+                canvas.drawLine(x, rowY, x, rowY + 20f, paint)
             }
-            
-            paint.color = Color.BLACK
+
+            paint.color = Color.rgb(15, 23, 42)
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             paint.textSize = 8f
             paint.style = Paint.Style.FILL
-            
-            val yText = rowY + 12f
-            
-            drawCellText(canvas, (idx + 1).toString(), 36f, 25f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, formatDate(tx.tanggal), 61f, 95f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, tx.keterangan, 156f, 210f, yText, paint, Paint.Align.LEFT)
-            
-            paint.color = if (tx.jenis == "Masuk") Color.rgb(21, 128, 61) else Color.rgb(185, 28, 28)
-            drawCellText(canvas, tx.jenis, 366f, 80f, yText, paint, Paint.Align.CENTER)
-            
-            paint.color = Color.BLACK
-            drawCellText(canvas, formatRupiah(tx.nominal), 446f, 112f, yText, paint, Paint.Align.RIGHT)
-            
-            rowY += 18f
+
+            val yText = rowY + 13.5f
+
+            drawCellText(canvas, (idx + 1).toString(), 36f, 26f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, formatDate(tx.tanggal), 62f, 75f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, tx.keterangan, 137f, 232f, yText, paint, Paint.Align.LEFT)
+
+            paint.color = if (tx.jenis == "Masuk") Color.rgb(22, 163, 74) else Color.rgb(220, 38, 38)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            drawCellText(canvas, tx.jenis, 369f, 55f, yText, paint, Paint.Align.CENTER)
+
+            paint.color = Color.rgb(15, 23, 42)
+            drawCellText(canvas, formatRupiah(tx.nominal), 424f, 135f, yText, paint, Paint.Align.RIGHT)
+
+            rowY += 20f
         }
-        
+
         pdfCreator.yPos = rowY
-        pdfCreator.checkNewPage(70f) {}
+        pdfCreator.checkNewPage(145f) {}
         rowY = pdfCreator.yPos
-        
-        val canvas = pdfCreator.canvas
-        paint.color = Color.rgb(15, 23, 42)
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(36f, rowY + 5f, 558f, rowY + 65f, paint)
-        
-        paint.color = Color.WHITE
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 9f
-        
+
         val totalMasuk = incomes.sumOf { it.nominal }
         val totalKeluar = expenses.sumOf { it.nominal }
         val saldo = totalMasuk - totalKeluar
-        val tanggalCetak = formatDate(System.currentTimeMillis())
-        
-        canvas.drawText("RINGKASAN LAPORAN KAS ANNIVERSARY:", 46f, rowY + 22f, paint)
-        
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        paint.textSize = 8f
-        canvas.drawText("Total Pemasukan  : ${formatRupiah(totalMasuk)}", 46f, rowY + 40f, paint)
-        canvas.drawText("Total Pengeluaran : ${formatRupiah(totalKeluar)}", 46f, rowY + 50f, paint)
-        
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("Saldo Akhir Kas   : ${formatRupiah(saldo)}", 320f, rowY + 40f, paint)
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        canvas.drawText("Tanggal Cetak     : $tanggalCetak", 320f, rowY + 50f, paint)
-        
+
+        val summaryY = drawExecutiveFinancialSummary(
+            canvas = pdfCreator.canvas,
+            startY = rowY + 10f,
+            paint = paint,
+            masuk = totalMasuk,
+            keluar = totalKeluar,
+            saldo = saldo
+        )
+
+        drawDocumentSignatures(pdfCreator.canvas, summaryY + 12f, paint)
+
         pdfCreator.finish()
-        
+
         val docsDir = File(context.cacheDir, "documents").apply { mkdirs() }
         val file = File(docsDir, "Laporan_Kas_Anniversary.pdf")
         pdfDocument.writeTo(FileOutputStream(file))
         pdfDocument.close()
-        
+
         return file
     }
 
@@ -2716,15 +2762,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         val communityName = settings.community_name.ifEmpty { "NEBO SUKABUMI" }
         val logoPath = settings.community_logo
         val logoBitmap = loadLogoBitmap(context, logoPath)
-        
-        val title = "Laporan Keuangan - Kas Keliling"
-        val pdfCreator = PdfCreatorHelper(pdfDocument, title, communityName, logoBitmap)
-        val paint = Paint()
-        
-        var rowY = pdfCreator.yPos
-        drawTableHeaderKeuangan(pdfCreator.canvas, rowY, paint)
-        rowY += 20f
-        
+
         val transactions = allKasKeliling.value.map {
             PdfTransaction(
                 tanggal = it.tanggal,
@@ -2733,54 +2771,97 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                 nominal = if (it.totalPemasukan > 0) it.totalPemasukan else if (it.nominal > 0) it.nominal else it.totalPengeluaran
             )
         }
-        
+        val totalPages = estimateTotalPages(transactions.size, 150f)
+
+        val title = "Laporan Keuangan - Kas Keliling"
+        val pdfCreator = PdfCreatorHelper(
+            pdfDocument = pdfDocument,
+            title = title,
+            communityName = communityName,
+            logoBitmap = logoBitmap,
+            totalPages = totalPages,
+            periodeText = "Kategori: Kas Keliling & Kegiatan Kopdar"
+        )
+        val paint = Paint()
+
+        var rowY = pdfCreator.yPos
+        drawTableHeaderKeuangan(pdfCreator.canvas, rowY, paint)
+        rowY += 22f
+
         transactions.forEachIndexed { idx, tx ->
             pdfCreator.yPos = rowY
-            pdfCreator.checkNewPage(18f) {
+            pdfCreator.checkNewPage(20f) {
                 drawTableHeaderKeuangan(pdfCreator.canvas, pdfCreator.yPos, paint)
-                pdfCreator.yPos += 20f
+                pdfCreator.yPos += 22f
             }
             rowY = pdfCreator.yPos
-            
+
             val canvas = pdfCreator.canvas
+
+            // Zebra striping
+            if (idx % 2 == 1) {
+                paint.color = Color.rgb(248, 250, 252)
+                paint.style = Paint.Style.FILL
+                canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+            }
+
             paint.color = Color.rgb(226, 232, 240)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 0.5f
-            canvas.drawRect(36f, rowY, 558f, rowY + 18f, paint)
-            
-            val cols = listOf(61f, 156f, 366f, 446f)
+            canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+
+            val cols = listOf(62f, 137f, 369f, 424f)
             cols.forEach { x ->
-                canvas.drawLine(x, rowY, x, rowY + 18f, paint)
+                canvas.drawLine(x, rowY, x, rowY + 20f, paint)
             }
-            
-            paint.color = Color.BLACK
+
+            paint.color = Color.rgb(15, 23, 42)
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             paint.textSize = 8f
             paint.style = Paint.Style.FILL
-            
-            val yText = rowY + 12f
-            
-            drawCellText(canvas, (idx + 1).toString(), 36f, 25f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, formatDate(tx.tanggal), 61f, 95f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, tx.keterangan, 156f, 210f, yText, paint, Paint.Align.LEFT)
-            
-            paint.color = if (tx.jenis == "Masuk") Color.rgb(21, 128, 61) else Color.rgb(185, 28, 28)
-            drawCellText(canvas, tx.jenis, 366f, 80f, yText, paint, Paint.Align.CENTER)
-            
-            paint.color = Color.BLACK
-            drawCellText(canvas, formatRupiah(tx.nominal), 446f, 112f, yText, paint, Paint.Align.RIGHT)
-            
-            rowY += 18f
+
+            val yText = rowY + 13.5f
+
+            drawCellText(canvas, (idx + 1).toString(), 36f, 26f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, formatDate(tx.tanggal), 62f, 75f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, tx.keterangan, 137f, 232f, yText, paint, Paint.Align.LEFT)
+
+            paint.color = if (tx.jenis == "Masuk") Color.rgb(22, 163, 74) else Color.rgb(220, 38, 38)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            drawCellText(canvas, tx.jenis, 369f, 55f, yText, paint, Paint.Align.CENTER)
+
+            paint.color = Color.rgb(15, 23, 42)
+            drawCellText(canvas, formatRupiah(tx.nominal), 424f, 135f, yText, paint, Paint.Align.RIGHT)
+
+            rowY += 20f
         }
-        
+
         pdfCreator.yPos = rowY
+        pdfCreator.checkNewPage(145f) {}
+        rowY = pdfCreator.yPos
+
+        val totalMasuk = transactions.filter { it.jenis == "Masuk" }.sumOf { it.nominal }
+        val totalKeluar = transactions.filter { it.jenis == "Keluar" }.sumOf { it.nominal }
+        val saldo = totalMasuk - totalKeluar
+
+        val summaryY = drawExecutiveFinancialSummary(
+            canvas = pdfCreator.canvas,
+            startY = rowY + 10f,
+            paint = paint,
+            masuk = totalMasuk,
+            keluar = totalKeluar,
+            saldo = saldo
+        )
+
+        drawDocumentSignatures(pdfCreator.canvas, summaryY + 12f, paint)
+
         pdfCreator.finish()
-        
+
         val docsDir = File(context.cacheDir, "documents").apply { mkdirs() }
         val file = File(docsDir, "Laporan_Kas_Keliling.pdf")
         pdfDocument.writeTo(FileOutputStream(file))
         pdfDocument.close()
-        
+
         return file
     }
 
@@ -2922,101 +3003,129 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         val communityName = settings.community_name.ifEmpty { "NEBO SUKABUMI" }
         val logoPath = settings.community_logo
         val logoBitmap = loadLogoBitmap(context, logoPath)
-        
+
         val monthName = MonthlyArchiveManager.getMonthName(month)
-        val title = "Laporan Bulanan - $monthName $year"
-        val pdfCreator = PdfCreatorHelper(pdfDocument, title, communityName, logoBitmap)
-        val paint = Paint()
-        
-        var rowY = pdfCreator.yPos
-        
+        val title = "Laporan Bulanan Keuangan"
+        val periodeStr = "Periode: $monthName $year"
+
         val transactions = MonthlyArchiveManager.filterTransactionsForMonth(
             year, month, allPembayaran.value, allPengeluaran.value, allKasKeliling.value
         )
-        
+        val totalPages = estimateTotalPages(transactions.size, 160f)
+
+        val pdfCreator = PdfCreatorHelper(
+            pdfDocument = pdfDocument,
+            title = title,
+            communityName = communityName,
+            logoBitmap = logoBitmap,
+            totalPages = totalPages,
+            periodeText = periodeStr
+        )
+        val paint = Paint()
+
+        var rowY = pdfCreator.yPos
+
         val saldoAwal = MonthlyArchiveManager.getSaldoAwalForMonth(
             context, year, month, allPembayaran.value, allPengeluaran.value, allKasKeliling.value
         )
-        
-        paint.color = Color.BLACK
+
+        // Saldo Awal Banner
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(241, 245, 249)
+        pdfCreator.canvas.drawRoundRect(android.graphics.RectF(36f, rowY, 559f, rowY + 22f), 4f, 4f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.rgb(203, 213, 225)
+        paint.strokeWidth = 0.5f
+        pdfCreator.canvas.drawRoundRect(android.graphics.RectF(36f, rowY, 559f, rowY + 22f), 4f, 4f, paint)
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(15, 23, 42)
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 10f
-        pdfCreator.canvas.drawText("Saldo Awal: ${formatRupiah(saldoAwal)}", 36f, rowY, paint)
-        rowY += 25f
-        
+        paint.textSize = 8.5f
+        paint.textAlign = Paint.Align.LEFT
+        pdfCreator.canvas.drawText("SALDO AWAL PERIODE ($monthName $year)", 46f, rowY + 14.5f, paint)
+        paint.textAlign = Paint.Align.RIGHT
+        pdfCreator.canvas.drawText(formatRupiah(saldoAwal), 549f, rowY + 14.5f, paint)
+
+        rowY += 30f
+
         drawTableHeaderKeuangan(pdfCreator.canvas, rowY, paint)
-        rowY += 20f
-        
+        rowY += 22f
+
         transactions.forEachIndexed { idx, tx ->
             pdfCreator.yPos = rowY
-            pdfCreator.checkNewPage(18f) {
+            pdfCreator.checkNewPage(20f) {
                 drawTableHeaderKeuangan(pdfCreator.canvas, pdfCreator.yPos, paint)
-                pdfCreator.yPos += 20f
+                pdfCreator.yPos += 22f
             }
             rowY = pdfCreator.yPos
-            
+
             val canvas = pdfCreator.canvas
+
+            // Zebra striping
+            if (idx % 2 == 1) {
+                paint.color = Color.rgb(248, 250, 252)
+                paint.style = Paint.Style.FILL
+                canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+            }
+
             paint.color = Color.rgb(226, 232, 240)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 0.5f
-            canvas.drawRect(36f, rowY, 558f, rowY + 18f, paint)
-            
-            val cols = listOf(61f, 156f, 366f, 446f)
+            canvas.drawRect(36f, rowY, 559f, rowY + 20f, paint)
+
+            val cols = listOf(62f, 137f, 369f, 424f)
             cols.forEach { x ->
-                canvas.drawLine(x, rowY, x, rowY + 18f, paint)
+                canvas.drawLine(x, rowY, x, rowY + 20f, paint)
             }
-            
-            paint.color = Color.BLACK
+
+            paint.color = Color.rgb(15, 23, 42)
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             paint.textSize = 8f
             paint.style = Paint.Style.FILL
-            
-            val yText = rowY + 12f
-            
-            drawCellText(canvas, (idx + 1).toString(), 36f, 25f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, tx.tanggalStr, 61f, 95f, yText, paint, Paint.Align.CENTER)
-            drawCellText(canvas, tx.namaAtauKeterangan, 156f, 210f, yText, paint, Paint.Align.LEFT)
-            
-            paint.color = if (tx.tipe == "PEMASUKAN") Color.rgb(21, 128, 61) else Color.rgb(185, 28, 28)
-            drawCellText(canvas, if (tx.tipe == "PEMASUKAN") "Masuk" else "Keluar", 366f, 80f, yText, paint, Paint.Align.CENTER)
-            
-            paint.color = Color.BLACK
-            drawCellText(canvas, formatRupiah(tx.nominal), 446f, 112f, yText, paint, Paint.Align.RIGHT)
-            
-            rowY += 18f
+
+            val yText = rowY + 13.5f
+
+            drawCellText(canvas, (idx + 1).toString(), 36f, 26f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, tx.tanggalStr, 62f, 75f, yText, paint, Paint.Align.CENTER)
+            drawCellText(canvas, tx.namaAtauKeterangan, 137f, 232f, yText, paint, Paint.Align.LEFT)
+
+            paint.color = if (tx.tipe == "PEMASUKAN") Color.rgb(22, 163, 74) else Color.rgb(220, 38, 38)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            drawCellText(canvas, if (tx.tipe == "PEMASUKAN") "Masuk" else "Keluar", 369f, 55f, yText, paint, Paint.Align.CENTER)
+
+            paint.color = Color.rgb(15, 23, 42)
+            drawCellText(canvas, formatRupiah(tx.nominal), 424f, 135f, yText, paint, Paint.Align.RIGHT)
+
+            rowY += 20f
         }
-        
+
         pdfCreator.yPos = rowY
-        pdfCreator.checkNewPage(70f) {}
+        pdfCreator.checkNewPage(145f) {}
         rowY = pdfCreator.yPos
-        
+
         val totalMasuk = transactions.filter { it.tipe == "PEMASUKAN" }.sumOf { it.nominal }
         val totalKeluar = transactions.filter { it.tipe == "PENGELUARAN" }.sumOf { it.nominal }
         val saldoAkhir = saldoAwal + totalMasuk - totalKeluar
-        
-        val canvas = pdfCreator.canvas
-        paint.color = Color.rgb(15, 23, 42)
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(36f, rowY + 5f, 558f, rowY + 65f, paint)
-        
-        paint.color = Color.WHITE
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textSize = 9f
-        canvas.drawText("RINGKASAN BULANAN:", 46f, rowY + 22f, paint)
-        
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        paint.textSize = 8f
-        canvas.drawText("Total Pemasukan  : ${formatRupiah(totalMasuk)}", 46f, rowY + 40f, paint)
-        canvas.drawText("Total Pengeluaran : ${formatRupiah(totalKeluar)}", 46f, rowY + 50f, paint)
-        canvas.drawText("Saldo Akhir      : ${formatRupiah(saldoAkhir)}", 320f, rowY + 40f, paint)
-        
+
+        val summaryY = drawExecutiveFinancialSummary(
+            canvas = pdfCreator.canvas,
+            startY = rowY + 10f,
+            paint = paint,
+            masuk = totalMasuk,
+            keluar = totalKeluar,
+            saldo = saldoAkhir
+        )
+
+        drawDocumentSignatures(pdfCreator.canvas, summaryY + 12f, paint)
+
         pdfCreator.finish()
-        
+
         val docsDir = File(context.cacheDir, "documents").apply { mkdirs() }
         val file = File(docsDir, "Laporan_Bulanan_${year}_${month}.pdf")
         pdfDocument.writeTo(FileOutputStream(file))
         pdfDocument.close()
-        
+
         return file
     }
 
@@ -3156,13 +3265,15 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     }
 }
 
-// --- HELPER CLASSES AND FUNCTIONS FOR SEPARATED PDF GENERATION ---
+// --- HELPER CLASSES AND FUNCTIONS FOR PROFESSIONAL PDF GENERATION ---
 
 class PdfCreatorHelper(
     private val pdfDocument: PdfDocument,
     private val title: String,
     private val communityName: String,
-    private val logoBitmap: android.graphics.Bitmap?
+    private val logoBitmap: android.graphics.Bitmap?,
+    var totalPages: Int = 1,
+    private val periodeText: String? = null
 ) {
     var currentPageIndex = 1
     var pageInfo = PdfDocument.PageInfo.Builder(595, 842, currentPageIndex).create()
@@ -3171,86 +3282,218 @@ class PdfCreatorHelper(
     var yPos = 36f
 
     init {
-        yPos = drawPdfHeader(canvas, title, communityName, logoBitmap, yPos)
+        yPos = drawPage1Header()
+    }
+
+    private fun drawFooter(targetCanvas: Canvas, pageNum: Int, total: Int) {
+        val paint = Paint().apply { isAntiAlias = true }
+        val footerLineY = 808f
+        paint.color = Color.rgb(226, 232, 240) // Slate 200
+        paint.strokeWidth = 0.75f
+        paint.style = Paint.Style.STROKE
+        targetCanvas.drawLine(36f, footerLineY, 559f, footerLineY, paint)
+
+        paint.style = Paint.Style.FILL
+        paint.textSize = 7f
+        paint.color = Color.rgb(148, 163, 184) // Slate 400
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.textAlign = Paint.Align.LEFT
+        targetCanvas.drawText("Sistem Manajemen Komunitas NEBO Sukabumi • Dokumen Laporan Resmi", 36f, footerLineY + 13f, paint)
+
+        val pageDisplay = if (total > 0) "Halaman $pageNum dari $total" else "Halaman $pageNum"
+        paint.color = Color.rgb(71, 85, 105) // Slate 600
+        paint.textSize = 7.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textAlign = Paint.Align.RIGHT
+        targetCanvas.drawText(pageDisplay, 559f, footerLineY + 13f, paint)
+    }
+
+    private fun drawPage1Header(): Float {
+        val paint = Paint().apply { isAntiAlias = true }
+        val startY = 36f
+        val logoSize = 44f
+        val logoX = 36f
+
+        // 1. Draw Logo
+        if (logoBitmap != null) {
+            val src = android.graphics.Rect(0, 0, logoBitmap.width, logoBitmap.height)
+            val dst = android.graphics.RectF(logoX, startY, logoX + logoSize, startY + logoSize)
+            paint.isFilterBitmap = true
+            canvas.drawBitmap(logoBitmap, src, dst, paint)
+        } else {
+            // Modern branded emblem badge
+            paint.color = Color.rgb(15, 23, 42) // Slate 900
+            paint.style = Paint.Style.FILL
+            canvas.drawRoundRect(android.graphics.RectF(logoX, startY, logoX + logoSize, startY + logoSize), 8f, 8f, paint)
+
+            paint.color = Color.rgb(59, 130, 246) // Blue 500 accent ring
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f
+            canvas.drawRoundRect(android.graphics.RectF(logoX + 2f, startY + 2f, logoX + logoSize - 2f, startY + logoSize - 2f), 7f, 7f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.WHITE
+            paint.textSize = 20f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            paint.textAlign = Paint.Align.CENTER
+            val yOffset = (paint.descent() + paint.ascent()) / 2
+            canvas.drawText("N", logoX + logoSize / 2, startY + logoSize / 2 - yOffset, paint)
+        }
+
+        // 2. Organization Name & Identity
+        val textStartX = logoX + logoSize + 10f
+        paint.textAlign = Paint.Align.LEFT
+        paint.color = Color.rgb(15, 23, 42)
+        paint.textSize = 13f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText(communityName.uppercase(), textStartX, startY + 13f, paint)
+
+        paint.color = Color.rgb(71, 85, 105) // Slate 600
+        paint.textSize = 7.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("KOMUNITAS PENGENDARA & SOSIAL SUKABUMI", textStartX, startY + 25f, paint)
+
+        paint.color = Color.rgb(100, 116, 139) // Slate 500
+        paint.textSize = 7f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Sekretariat: Kota Sukabumi, Jawa Barat • Sistem Laporan Keuangan", textStartX, startY + 37f, paint)
+
+        // 3. Right-aligned Metadata Box
+        val dateSdf = SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID"))
+        val timeSdf = SimpleDateFormat("HH:mm 'WIB'", Locale("id", "ID"))
+        val now = Date()
+
+        paint.textAlign = Paint.Align.RIGHT
+        paint.color = Color.rgb(71, 85, 105)
+        paint.textSize = 7.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Tanggal: ${dateSdf.format(now)}", 559f, startY + 13f, paint)
+
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.textSize = 7f
+        paint.color = Color.rgb(100, 116, 139)
+        canvas.drawText("Waktu: ${timeSdf.format(now)}", 559f, startY + 25f, paint)
+
+        paint.color = Color.rgb(22, 163, 74) // Green 600
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("STATUS: TERVERIFIKASI RESMI", 559f, startY + 37f, paint)
+
+        // 4. Double decorative divider line
+        val line1Y = startY + logoSize + 6f
+        paint.color = Color.rgb(15, 23, 42) // Primary Slate 900
+        paint.strokeWidth = 1.5f
+        paint.style = Paint.Style.STROKE
+        canvas.drawLine(36f, line1Y, 559f, line1Y, paint)
+
+        paint.color = Color.rgb(203, 213, 225) // Accent Slate 300
+        paint.strokeWidth = 0.5f
+        canvas.drawLine(36f, line1Y + 2.5f, 559f, line1Y + 2.5f, paint)
+
+        // 5. Title Banner
+        val titleBoxY = line1Y + 8f
+        val titleBoxHeight = if (periodeText != null) 32f else 26f
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(248, 250, 252) // Slate 50
+        canvas.drawRoundRect(android.graphics.RectF(36f, titleBoxY, 559f, titleBoxY + titleBoxHeight), 4f, 4f, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.rgb(226, 232, 240) // Slate 200
+        paint.strokeWidth = 0.75f
+        canvas.drawRoundRect(android.graphics.RectF(36f, titleBoxY, 559f, titleBoxY + titleBoxHeight), 4f, 4f, paint)
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(15, 23, 42)
+        paint.textSize = 10.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textAlign = Paint.Align.CENTER
+        val titleTextY = if (periodeText != null) titleBoxY + 15f else titleBoxY + 17f
+        canvas.drawText(title.uppercase(), 595f / 2f, titleTextY, paint)
+
+        if (periodeText != null) {
+            paint.color = Color.rgb(71, 85, 105)
+            paint.textSize = 7.5f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            canvas.drawText(periodeText, 595f / 2f, titleBoxY + 26f, paint)
+        }
+
+        return titleBoxY + titleBoxHeight + 10f
+    }
+
+    private fun drawContinuationHeader(): Float {
+        val paint = Paint().apply { isAntiAlias = true }
+        val startY = 36f
+
+        paint.color = Color.rgb(71, 85, 105)
+        paint.textSize = 8f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textAlign = Paint.Align.LEFT
+        canvas.drawText("${communityName.uppercase()} — $title (Lanjutan)", 36f, startY + 10f, paint)
+
+        paint.textAlign = Paint.Align.RIGHT
+        paint.color = Color.rgb(100, 116, 139)
+        paint.textSize = 7.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Halaman $currentPageIndex dari $totalPages", 559f, startY + 10f, paint)
+
+        val lineY = startY + 16f
+        paint.color = Color.rgb(203, 213, 225)
+        paint.strokeWidth = 0.75f
+        paint.style = Paint.Style.STROKE
+        canvas.drawLine(36f, lineY, 559f, lineY, paint)
+
+        return lineY + 8f
     }
 
     fun checkNewPage(neededHeight: Float, drawHeaderAction: () -> Unit) {
-        if (yPos + neededHeight > 806f) {
+        if (yPos + neededHeight > 785f) {
+            drawFooter(canvas, currentPageIndex, totalPages)
             pdfDocument.finishPage(page)
             currentPageIndex++
+            if (currentPageIndex > totalPages) {
+                totalPages = currentPageIndex
+            }
             pageInfo = PdfDocument.PageInfo.Builder(595, 842, currentPageIndex).create()
             page = pdfDocument.startPage(pageInfo)
             canvas = page.canvas
             yPos = 36f
-            yPos = drawPdfHeader(canvas, title, communityName, logoBitmap, yPos)
+            yPos = drawContinuationHeader()
             drawHeaderAction()
         }
     }
 
     fun finish() {
+        if (currentPageIndex > totalPages) {
+            totalPages = currentPageIndex
+        }
+        drawFooter(canvas, currentPageIndex, totalPages)
         pdfDocument.finishPage(page)
     }
+}
 
-    private fun drawPdfHeader(
-        canvas: Canvas,
-        title: String,
-        communityName: String,
-        logoBitmap: android.graphics.Bitmap?,
-        startY: Float
-    ): Float {
-        val paint = Paint()
-        
-        // Draw Logo
-        val logoSize = 50f
-        val logoX = 36f
-        if (logoBitmap != null) {
-            val src = android.graphics.Rect(0, 0, logoBitmap.width, logoBitmap.height)
-            val dst = android.graphics.RectF(logoX, startY, logoX + logoSize, startY + logoSize)
-            canvas.drawBitmap(logoBitmap, src, dst, paint)
-        } else {
-            // Draw placeholder circular badge
-            paint.color = Color.rgb(15, 23, 42)
-            paint.isAntiAlias = true
-            canvas.drawCircle(logoX + logoSize / 2, startY + logoSize / 2, logoSize / 2, paint)
-            
-            paint.color = Color.WHITE
-            paint.textSize = 24f
-            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            paint.textAlign = Paint.Align.CENTER
-            val initial = if (communityName.isNotEmpty()) communityName.substring(0, 1) else "N"
-            val yOffset = (paint.descent() + paint.ascent()) / 2
-            canvas.drawText(initial, logoX + logoSize / 2, startY + logoSize / 2 - yOffset, paint)
+private fun estimateTotalPages(itemCount: Int, summaryAndSigHeight: Float = 150f): Int {
+    val rowHeight = 20f
+    val page1Space = 633f
+    val totalHeightNeeded = (itemCount * rowHeight) + summaryAndSigHeight
+    if (totalHeightNeeded <= page1Space) return 1
+
+    val pageSubsequentSpace = 718f
+    val itemsOnPage1 = (page1Space / rowHeight).toInt()
+    var remainingItems = itemCount - itemsOnPage1
+    var pages = 1
+    while (remainingItems > 0) {
+        pages++
+        val itemsThisPage = (pageSubsequentSpace / rowHeight).toInt()
+        remainingItems -= itemsThisPage
+        if (remainingItems <= 0) {
+            val spaceUsed = maxOf(0, remainingItems + itemsThisPage) * rowHeight
+            if (spaceUsed + summaryAndSigHeight > pageSubsequentSpace) {
+                pages++
+            }
+            break
         }
-        
-        // Community Name
-        paint.color = Color.BLACK
-        paint.textSize = 14f
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textAlign = Paint.Align.LEFT
-        paint.isAntiAlias = true
-        canvas.drawText(communityName, logoX + logoSize + 12f, startY + 22f, paint)
-        
-        // Slogan
-        paint.color = Color.GRAY
-        paint.textSize = 9f
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        canvas.drawText("Laporan Resmi Komunitas", logoX + logoSize + 12f, startY + 38f, paint)
-        
-        // Horizontal Line
-        val lineY = startY + logoSize + 10f
-        paint.color = Color.rgb(200, 200, 200)
-        paint.strokeWidth = 1.5f
-        canvas.drawLine(36f, lineY, 558f, lineY, paint)
-        
-        // Title
-        paint.color = Color.BLACK
-        paint.textSize = 13f
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText(title, 595f / 2, lineY + 26f, paint)
-        
-        return lineY + 38f
     }
+    return maxOf(1, pages)
 }
 
 private fun truncateText(text: String, paint: Paint, maxWidth: Float): String {
@@ -3272,101 +3515,423 @@ private fun drawCellText(
     align: Paint.Align
 ) {
     paint.textAlign = align
+    val padding = 6f
     val textX = when (align) {
-        Paint.Align.LEFT -> x + 4f
-        Paint.Align.RIGHT -> x + width - 4f
+        Paint.Align.LEFT -> x + padding
+        Paint.Align.RIGHT -> x + width - padding
         Paint.Align.CENTER -> x + width / 2f
     }
-    val truncated = truncateText(text, paint, width - 8f)
+    val truncated = truncateText(text, paint, width - (padding * 2))
     canvas.drawText(truncated, textX, y, paint)
 }
 
 private fun drawTableHeaderCicilan(canvas: Canvas, y: Float, paint: Paint) {
-    paint.color = Color.rgb(241, 245, 249)
     paint.style = Paint.Style.FILL
-    canvas.drawRect(36f, y, 558f, y + 20f, paint)
-    
-    paint.color = Color.rgb(203, 213, 225)
+    paint.color = Color.rgb(241, 245, 249) // Slate 100
+    canvas.drawRect(36f, y, 559f, y + 22f, paint)
+
+    paint.color = Color.rgb(203, 213, 225) // Slate 300
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = 1f
-    canvas.drawRect(36f, y, 558f, y + 20f, paint)
-    
-    val cols = listOf(61f, 171f, 236f, 311f, 346f, 421f, 496f)
+    canvas.drawRect(36f, y, 559f, y + 22f, paint)
+
+    val cols = listOf(60f, 165f, 230f, 304f, 340f, 414f, 489f)
     cols.forEach { x ->
-        canvas.drawLine(x, y, x, y + 20f, paint)
+        canvas.drawLine(x, y, x, y + 22f, paint)
     }
-    
-    paint.color = Color.BLACK
+
+    paint.color = Color.rgb(15, 23, 42)
     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     paint.textSize = 8f
     paint.style = Paint.Style.FILL
-    
-    val yText = y + 13f
-    drawCellText(canvas, "No", 36f, 25f, yText, paint, Paint.Align.CENTER)
-    drawCellText(canvas, "Nama Anggota", 61f, 110f, yText, paint, Paint.Align.LEFT)
-    drawCellText(canvas, "Barang", 171f, 65f, yText, paint, Paint.Align.LEFT)
-    drawCellText(canvas, "Harga", 236f, 75f, yText, paint, Paint.Align.RIGHT)
-    drawCellText(canvas, "Lama", 311f, 35f, yText, paint, Paint.Align.CENTER)
-    drawCellText(canvas, "Cicilan/Bln", 346f, 75f, yText, paint, Paint.Align.RIGHT)
-    drawCellText(canvas, "Sisa Cicilan", 421f, 75f, yText, paint, Paint.Align.RIGHT)
-    drawCellText(canvas, "Status", 496f, 62f, yText, paint, Paint.Align.CENTER)
+
+    val yText = y + 14.5f
+    drawCellText(canvas, "No", 36f, 24f, yText, paint, Paint.Align.CENTER)
+    drawCellText(canvas, "Nama Anggota", 60f, 105f, yText, paint, Paint.Align.LEFT)
+    drawCellText(canvas, "Barang", 165f, 65f, yText, paint, Paint.Align.LEFT)
+    drawCellText(canvas, "Harga Barang", 230f, 74f, yText, paint, Paint.Align.RIGHT)
+    drawCellText(canvas, "Tenor", 304f, 36f, yText, paint, Paint.Align.CENTER)
+    drawCellText(canvas, "Cicilan/Bln", 340f, 74f, yText, paint, Paint.Align.RIGHT)
+    drawCellText(canvas, "Sisa Cicilan", 414f, 75f, yText, paint, Paint.Align.RIGHT)
+    drawCellText(canvas, "Status", 489f, 70f, yText, paint, Paint.Align.CENTER)
 }
 
 private fun drawTableHeaderRiwayat(canvas: Canvas, y: Float, paint: Paint) {
-    paint.color = Color.rgb(241, 245, 249)
     paint.style = Paint.Style.FILL
-    canvas.drawRect(36f, y, 558f, y + 20f, paint)
-    
+    paint.color = Color.rgb(241, 245, 249)
+    canvas.drawRect(36f, y, 559f, y + 22f, paint)
+
     paint.color = Color.rgb(203, 213, 225)
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = 1f
-    canvas.drawRect(36f, y, 558f, y + 20f, paint)
-    
-    val cols = listOf(61f, 186f, 271f, 356f, 446f)
+    canvas.drawRect(36f, y, 559f, y + 22f, paint)
+
+    val cols = listOf(60f, 175f, 255f, 345f, 435f)
     cols.forEach { x ->
-        canvas.drawLine(x, y, x, y + 20f, paint)
+        canvas.drawLine(x, y, x, y + 22f, paint)
     }
-    
-    paint.color = Color.BLACK
+
+    paint.color = Color.rgb(15, 23, 42)
     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     paint.textSize = 8f
     paint.style = Paint.Style.FILL
-    
-    val yText = y + 13f
-    drawCellText(canvas, "No", 36f, 25f, yText, paint, Paint.Align.CENTER)
-    drawCellText(canvas, "Nama Anggota", 61f, 125f, yText, paint, Paint.Align.LEFT)
-    drawCellText(canvas, "Tanggal Bayar", 186f, 85f, yText, paint, Paint.Align.CENTER)
-    drawCellText(canvas, "Nominal", 271f, 85f, yText, paint, Paint.Align.RIGHT)
-    drawCellText(canvas, "Sisa Cicilan", 356f, 90f, yText, paint, Paint.Align.RIGHT)
-    drawCellText(canvas, "Keterangan", 446f, 112f, yText, paint, Paint.Align.LEFT)
+
+    val yText = y + 14.5f
+    drawCellText(canvas, "No", 36f, 24f, yText, paint, Paint.Align.CENTER)
+    drawCellText(canvas, "Nama Anggota", 60f, 115f, yText, paint, Paint.Align.LEFT)
+    drawCellText(canvas, "Tanggal Bayar", 175f, 80f, yText, paint, Paint.Align.CENTER)
+    drawCellText(canvas, "Nominal Bayar", 255f, 90f, yText, paint, Paint.Align.RIGHT)
+    drawCellText(canvas, "Sisa Cicilan", 345f, 90f, yText, paint, Paint.Align.RIGHT)
+    drawCellText(canvas, "Keterangan", 435f, 124f, yText, paint, Paint.Align.LEFT)
 }
 
 private fun drawTableHeaderKeuangan(canvas: Canvas, y: Float, paint: Paint) {
-    paint.color = Color.rgb(241, 245, 249)
     paint.style = Paint.Style.FILL
-    canvas.drawRect(36f, y, 558f, y + 20f, paint)
-    
+    paint.color = Color.rgb(241, 245, 249)
+    canvas.drawRect(36f, y, 559f, y + 22f, paint)
+
     paint.color = Color.rgb(203, 213, 225)
     paint.style = Paint.Style.STROKE
     paint.strokeWidth = 1f
-    canvas.drawRect(36f, y, 558f, y + 20f, paint)
-    
-    val cols = listOf(61f, 156f, 366f, 446f)
+    canvas.drawRect(36f, y, 559f, y + 22f, paint)
+
+    val cols = listOf(62f, 137f, 369f, 424f)
     cols.forEach { x ->
-        canvas.drawLine(x, y, x, y + 20f, paint)
+        canvas.drawLine(x, y, x, y + 22f, paint)
     }
-    
-    paint.color = Color.BLACK
+
+    paint.color = Color.rgb(15, 23, 42)
     paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     paint.textSize = 8f
     paint.style = Paint.Style.FILL
-    
-    val yText = y + 13f
-    drawCellText(canvas, "No", 36f, 25f, yText, paint, Paint.Align.CENTER)
-    drawCellText(canvas, "Tanggal", 61f, 95f, yText, paint, Paint.Align.CENTER)
-    drawCellText(canvas, "Keterangan", 156f, 210f, yText, paint, Paint.Align.LEFT)
-    drawCellText(canvas, "Jenis", 366f, 80f, yText, paint, Paint.Align.CENTER)
-    drawCellText(canvas, "Nominal", 446f, 112f, yText, paint, Paint.Align.RIGHT)
+
+    val yText = y + 14.5f
+    drawCellText(canvas, "No", 36f, 26f, yText, paint, Paint.Align.CENTER)
+    drawCellText(canvas, "Tanggal", 62f, 75f, yText, paint, Paint.Align.CENTER)
+    drawCellText(canvas, "Keterangan Transaksi", 137f, 232f, yText, paint, Paint.Align.LEFT)
+    drawCellText(canvas, "Jenis", 369f, 55f, yText, paint, Paint.Align.CENTER)
+    drawCellText(canvas, "Nominal", 424f, 135f, yText, paint, Paint.Align.RIGHT)
+}
+
+private fun drawExecutiveFinancialSummary(
+    canvas: Canvas,
+    startY: Float,
+    paint: Paint,
+    masuk: Double,
+    keluar: Double,
+    saldo: Double
+): Float {
+    val cardHeight = 60f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(248, 250, 252)
+    canvas.drawRoundRect(android.graphics.RectF(36f, startY, 559f, startY + cardHeight), 4f, 4f, paint)
+
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(203, 213, 225)
+    paint.strokeWidth = 0.75f
+    canvas.drawRoundRect(android.graphics.RectF(36f, startY, 559f, startY + cardHeight), 4f, 4f, paint)
+
+    // Header bar inside card
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(241, 245, 249)
+    canvas.drawRect(36f, startY, 559f, startY + 18f, paint)
+
+    paint.color = Color.rgb(15, 23, 42)
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    paint.textSize = 7.5f
+    paint.textAlign = Paint.Align.LEFT
+    canvas.drawText("IKHTISAR KEUANGAN RESMI", 46f, startY + 12.5f, paint)
+
+    paint.color = Color.rgb(22, 163, 74)
+    paint.textAlign = Paint.Align.RIGHT
+    canvas.drawText("STATUS: VALID & DIVERIFIKASI", 549f, startY + 12.5f, paint)
+
+    // 3 KPI Boxes
+    val boxY = startY + 22f
+    val boxHeight = 33f
+    val boxW = 166f
+
+    // Box 1: Pemasukan
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(240, 253, 244)
+    canvas.drawRoundRect(android.graphics.RectF(42f, boxY, 42f + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(187, 247, 208)
+    paint.strokeWidth = 0.5f
+    canvas.drawRoundRect(android.graphics.RectF(42f, boxY, 42f + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(21, 128, 61)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    paint.textAlign = Paint.Align.LEFT
+    canvas.drawText("TOTAL PEMASUKAN", 48f, boxY + 11f, paint)
+    paint.textSize = 9.5f
+    paint.color = Color.rgb(22, 101, 52)
+    canvas.drawText("+ ${formatRupiah(masuk)}", 48f, boxY + 25f, paint)
+
+    // Box 2: Pengeluaran
+    val box2X = 42f + boxW + 7f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(254, 242, 242)
+    canvas.drawRoundRect(android.graphics.RectF(box2X, boxY, box2X + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(254, 202, 202)
+    canvas.drawRoundRect(android.graphics.RectF(box2X, boxY, box2X + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(185, 28, 28)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    canvas.drawText("TOTAL PENGELUARAN", box2X + 6f, boxY + 11f, paint)
+    paint.textSize = 9.5f
+    paint.color = Color.rgb(153, 27, 27)
+    canvas.drawText("- ${formatRupiah(keluar)}", box2X + 6f, boxY + 25f, paint)
+
+    // Box 3: Saldo Akhir
+    val box3X = box2X + boxW + 7f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(240, 249, 255)
+    canvas.drawRoundRect(android.graphics.RectF(box3X, boxY, box3X + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(186, 230, 253)
+    canvas.drawRoundRect(android.graphics.RectF(box3X, boxY, box3X + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(3, 105, 161)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    canvas.drawText("SALDO AKHIR", box3X + 6f, boxY + 11f, paint)
+    paint.textSize = 10f
+    paint.color = Color.rgb(7, 89, 133)
+    canvas.drawText(formatRupiah(saldo), box3X + 6f, boxY + 25f, paint)
+
+    return startY + cardHeight
+}
+
+private fun drawExecutiveCicilanSummary(
+    canvas: Canvas,
+    startY: Float,
+    paint: Paint,
+    totalHarga: Double,
+    totalSisa: Double,
+    lunasCount: Int,
+    belumLunasCount: Int
+): Float {
+    val cardHeight = 60f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(248, 250, 252)
+    canvas.drawRoundRect(android.graphics.RectF(36f, startY, 559f, startY + cardHeight), 4f, 4f, paint)
+
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(203, 213, 225)
+    paint.strokeWidth = 0.75f
+    canvas.drawRoundRect(android.graphics.RectF(36f, startY, 559f, startY + cardHeight), 4f, 4f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(241, 245, 249)
+    canvas.drawRect(36f, startY, 559f, startY + 18f, paint)
+
+    paint.color = Color.rgb(15, 23, 42)
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    paint.textSize = 7.5f
+    paint.textAlign = Paint.Align.LEFT
+    canvas.drawText("RINGKASAN FASILITAS CICILAN", 46f, startY + 12.5f, paint)
+
+    paint.color = Color.rgb(59, 130, 246)
+    paint.textAlign = Paint.Align.RIGHT
+    canvas.drawText("STATUS: INTERNAL KOMUNITAS", 549f, startY + 12.5f, paint)
+
+    val boxY = startY + 22f
+    val boxHeight = 33f
+    val boxW = 166f
+
+    // Box 1: Total Harga Barang
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(241, 245, 249)
+    canvas.drawRoundRect(android.graphics.RectF(42f, boxY, 42f + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(203, 213, 225)
+    paint.strokeWidth = 0.5f
+    canvas.drawRoundRect(android.graphics.RectF(42f, boxY, 42f + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(71, 85, 105)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    paint.textAlign = Paint.Align.LEFT
+    canvas.drawText("TOTAL HARGA BARANG", 48f, boxY + 11f, paint)
+    paint.textSize = 9.5f
+    paint.color = Color.rgb(15, 23, 42)
+    canvas.drawText(formatRupiah(totalHarga), 48f, boxY + 25f, paint)
+
+    // Box 2: Total Sisa Cicilan
+    val box2X = 42f + boxW + 7f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(254, 242, 242)
+    canvas.drawRoundRect(android.graphics.RectF(box2X, boxY, box2X + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(254, 202, 202)
+    canvas.drawRoundRect(android.graphics.RectF(box2X, boxY, box2X + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(185, 28, 28)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    canvas.drawText("TOTAL SISA CICILAN", box2X + 6f, boxY + 11f, paint)
+    paint.textSize = 9.5f
+    paint.color = Color.rgb(153, 27, 27)
+    canvas.drawText(formatRupiah(totalSisa), box2X + 6f, boxY + 25f, paint)
+
+    // Box 3: Status Pelunasan
+    val box3X = box2X + boxW + 7f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(240, 253, 244)
+    canvas.drawRoundRect(android.graphics.RectF(box3X, boxY, box3X + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(187, 247, 208)
+    canvas.drawRoundRect(android.graphics.RectF(box3X, boxY, box3X + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(21, 128, 61)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    canvas.drawText("STATUS ANGGOTA", box3X + 6f, boxY + 11f, paint)
+    paint.textSize = 9f
+    paint.color = Color.rgb(22, 101, 52)
+    canvas.drawText("$lunasCount Lunas • $belumLunasCount Berjalan", box3X + 6f, boxY + 25f, paint)
+
+    return startY + cardHeight
+}
+
+private fun drawExecutiveRiwayatSummary(
+    canvas: Canvas,
+    startY: Float,
+    paint: Paint,
+    totalNominal: Double,
+    totalTransaksi: Int,
+    tanggalCetak: String
+): Float {
+    val cardHeight = 60f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(248, 250, 252)
+    canvas.drawRoundRect(android.graphics.RectF(36f, startY, 559f, startY + cardHeight), 4f, 4f, paint)
+
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(203, 213, 225)
+    paint.strokeWidth = 0.75f
+    canvas.drawRoundRect(android.graphics.RectF(36f, startY, 559f, startY + cardHeight), 4f, 4f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(241, 245, 249)
+    canvas.drawRect(36f, startY, 559f, startY + 18f, paint)
+
+    paint.color = Color.rgb(15, 23, 42)
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    paint.textSize = 7.5f
+    paint.textAlign = Paint.Align.LEFT
+    canvas.drawText("RINGKASAN RIWAYAT ANGSURAN", 46f, startY + 12.5f, paint)
+
+    paint.color = Color.rgb(22, 163, 74)
+    paint.textAlign = Paint.Align.RIGHT
+    canvas.drawText("LOG PEMBAYARAN VALID", 549f, startY + 12.5f, paint)
+
+    val boxY = startY + 22f
+    val boxHeight = 33f
+    val boxW = 166f
+
+    // Box 1: Total Pembayaran Masuk
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(240, 253, 244)
+    canvas.drawRoundRect(android.graphics.RectF(42f, boxY, 42f + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(187, 247, 208)
+    paint.strokeWidth = 0.5f
+    canvas.drawRoundRect(android.graphics.RectF(42f, boxY, 42f + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(21, 128, 61)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    paint.textAlign = Paint.Align.LEFT
+    canvas.drawText("TOTAL ANGSURAN MASUK", 48f, boxY + 11f, paint)
+    paint.textSize = 9.5f
+    paint.color = Color.rgb(22, 101, 52)
+    canvas.drawText(formatRupiah(totalNominal), 48f, boxY + 25f, paint)
+
+    // Box 2: Total Transaksi
+    val box2X = 42f + boxW + 7f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(241, 245, 249)
+    canvas.drawRoundRect(android.graphics.RectF(box2X, boxY, box2X + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(203, 213, 225)
+    canvas.drawRoundRect(android.graphics.RectF(box2X, boxY, box2X + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(71, 85, 105)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    canvas.drawText("JUMLAH TRANSAKSI", box2X + 6f, boxY + 11f, paint)
+    paint.textSize = 9.5f
+    paint.color = Color.rgb(15, 23, 42)
+    canvas.drawText("$totalTransaksi Pembayaran", box2X + 6f, boxY + 25f, paint)
+
+    // Box 3: Tanggal Audit
+    val box3X = box2X + boxW + 7f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(240, 249, 255)
+    canvas.drawRoundRect(android.graphics.RectF(box3X, boxY, box3X + boxW, boxY + boxHeight), 3f, 3f, paint)
+    paint.style = Paint.Style.STROKE
+    paint.color = Color.rgb(186, 230, 253)
+    canvas.drawRoundRect(android.graphics.RectF(box3X, boxY, box3X + boxW, boxY + boxHeight), 3f, 3f, paint)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(3, 105, 161)
+    paint.textSize = 6.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    canvas.drawText("TANGGAL CETAK", box3X + 6f, boxY + 11f, paint)
+    paint.textSize = 8.5f
+    paint.color = Color.rgb(7, 89, 133)
+    canvas.drawText(tanggalCetak, box3X + 6f, boxY + 25f, paint)
+
+    return startY + cardHeight
+}
+
+private fun drawDocumentSignatures(canvas: Canvas, startY: Float, paint: Paint): Float {
+    val dateFull = SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")).format(Date())
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(71, 85, 105)
+    paint.textSize = 7.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+    paint.textAlign = Paint.Align.RIGHT
+    canvas.drawText("Kota Sukabumi, $dateFull", 559f, startY + 10f, paint)
+
+    val titleSigY = startY + 22f
+    paint.textAlign = Paint.Align.CENTER
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    paint.textSize = 8f
+    paint.color = Color.rgb(15, 23, 42)
+    canvas.drawText("Ketua Komunitas", 120f, titleSigY, paint)
+    canvas.drawText("Bendahara Komunitas", 475f, titleSigY, paint)
+
+    val lineSigY = titleSigY + 36f
+    paint.color = Color.rgb(203, 213, 225)
+    paint.strokeWidth = 0.75f
+    paint.style = Paint.Style.STROKE
+    canvas.drawLine(70f, lineSigY, 170f, lineSigY, paint)
+    canvas.drawLine(425f, lineSigY, 525f, lineSigY, paint)
+
+    val nameSigY = lineSigY + 11f
+    paint.style = Paint.Style.FILL
+    paint.color = Color.rgb(100, 116, 139)
+    paint.textSize = 7.5f
+    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+    canvas.drawText("( Ketua NEBO )", 120f, nameSigY, paint)
+    canvas.drawText("( Bendahara NEBO )", 475f, nameSigY, paint)
+
+    return nameSigY + 10f
 }
 
 data class PdfTransaction(

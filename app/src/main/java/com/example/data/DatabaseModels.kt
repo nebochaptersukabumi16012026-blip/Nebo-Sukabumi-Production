@@ -13,6 +13,7 @@ data class Anggota(
     val nra: String = "",
     val alamat: String = "",
     @Json(name = "no_wa") @ColumnInfo(name = "no_hp") val nomorTelepon: String = "",
+    @Json(name = "nomor_urut") @ColumnInfo(name = "nomor_urut") val nomorUrut: String = "",
     val statusAktif: Int = 1,
     val role: String = "ANGGOTA", // "BENDAHARA", "ANGGOTA"
     val username: String = "",

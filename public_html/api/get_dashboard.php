@@ -179,24 +179,31 @@ try {
     $anggota_mencicil = 0;
 
     $stmt_cic_ang = $db->query("SELECT 
-        IFNULL(SUM(sisa_cicilan), 0) as total_sisa,
-        IFNULL(SUM(harga_barang), 0) as total_harga,
-        IFNULL(SUM(total_cicilan), 0) as total_bayar,
-        COUNT(CASE WHEN sisa_cicilan > 0 OR (harga_barang > 0 AND (harga_barang - total_cicilan) > 0) THEN 1 END) as count_mencicil
-        FROM anggota WHERE harga_barang > 0 OR sisa_cicilan > 0");
+        COALESCE(SUM(COALESCE(a.harga_barang, 0)), 0) AS total_harga,
+        COALESCE(SUM(COALESCE(c.total_bayar, a.total_cicilan, 0)), 0) AS total_bayar,
+        COALESCE(SUM(CASE 
+            WHEN COALESCE(a.harga_barang, 0) > 0 
+                THEN GREATEST(0, COALESCE(a.harga_barang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) 
+            ELSE GREATEST(0, COALESCE(a.sisa_cicilan, 0)) 
+        END), 0) AS total_sisa,
+        COUNT(CASE 
+            WHEN (COALESCE(a.harga_barang, 0) > 0 AND (COALESCE(a.harga_barang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) > 0)
+              OR (COALESCE(a.harga_barang, 0) = 0 AND COALESCE(a.sisa_cicilan, 0) > 0)
+            THEN 1 
+        END) AS count_mencicil
+        FROM anggota a
+        LEFT JOIN (
+            SELECT anggota_id, COALESCE(SUM(nominal), 0) AS total_bayar 
+            FROM cicilan 
+            GROUP BY anggota_id
+        ) c ON a.id = c.anggota_id
+        WHERE a.harga_barang > 0 OR a.sisa_cicilan > 0");
 
     if ($stmt_cic_ang && $row_cic = $stmt_cic_ang->fetch(PDO::FETCH_ASSOC)) {
         $saldo_cicilan = floatval($row_cic['total_sisa'] ?? 0.0);
         $total_harga_barang = floatval($row_cic['total_harga'] ?? 0.0);
         $total_sudah_dibayar = floatval($row_cic['total_bayar'] ?? 0.0);
         $anggota_mencicil = intval($row_cic['count_mencicil'] ?? 0);
-    }
-
-    if ($saldo_cicilan <= 0.0) {
-        $stmt_cic_table = $db->query("SELECT IFNULL(SUM(jumlah_bayar), 0) as total FROM cicilan");
-        if ($stmt_cic_table && $row_cict = $stmt_cic_table->fetch(PDO::FETCH_ASSOC)) {
-            $saldo_cicilan = floatval($row_cict['total'] ?? 0.0);
-        }
     }
 
     // ==============================================================================

@@ -37,22 +37,45 @@ switch ($method) {
         break;
 
     case 'POST':
-        if (!empty($data->anggota_id) && isset($data->nominal)) {
+        $anggota_id = !empty($data->anggota_id) ? intval($data->anggota_id) : (!empty($data->id_anggota) ? intval($data->id_anggota) : intval($data->anggotaId ?? 0));
+        $nominal = isset($data->nominal) ? floatval($data->nominal) : 0.0;
+        
+        if ($anggota_id > 0 && $nominal > 0) {
             try {
                 $conn->beginTransaction();
+                
+                $tgl = date('Y-m-d');
+                if (!empty($data->tanggal)) {
+                    if (is_numeric($data->tanggal)) {
+                        $ts = intval($data->tanggal);
+                        if ($ts > 9999999999) $ts = intval($ts / 1000);
+                        $tgl = date('Y-m-d', $ts);
+                    } else {
+                        $tgl = date('Y-m-d', strtotime($data->tanggal));
+                    }
+                }
+                $keterangan = !empty($data->keterangan) ? $data->keterangan : 'Pembayaran Cicilan';
+
                 $query = "INSERT INTO cicilan (anggota_id, nominal, tanggal, keterangan) VALUES (?, ?, ?, ?)";
                 $stmt = $conn->prepare($query);
                 $stmt->execute(array(
-                    $data->anggota_id,
-                    $data->nominal,
-                    isset($data->tanggal) ? $data->tanggal : date('Y-m-d'),
-                    isset($data->keterangan) ? $data->keterangan : ''
+                    $anggota_id,
+                    $nominal,
+                    $tgl,
+                    $keterangan
                 ));
+                $insertedId = $conn->lastInsertId();
                 
-                recalculateAnggotaCicilan($conn, $data->anggota_id);
+                recalculateAnggotaCicilan($conn, $anggota_id);
                 $conn->commit();
                 
-                echo json_encode(array("status" => "success", "message" => "Cicilan berhasil ditambahkan"));
+                echo json_encode(array(
+                    "status" => "success", 
+                    "message" => "Cicilan berhasil ditambahkan",
+                    "id" => intval($insertedId),
+                    "anggota_id" => $anggota_id,
+                    "nominal" => $nominal
+                ));
             } catch (Throwable $e) {
                 if ($conn->inTransaction()) {
                     $conn->rollBack();
@@ -60,27 +83,59 @@ switch ($method) {
                 http_response_code(500);
                 echo json_encode(array("status" => "error", "message" => "Gagal tambah cicilan: " . $e->getMessage()));
             }
+        } else {
+            http_response_code(400);
+            echo json_encode(array("status" => "error", "message" => "anggota_id dan nominal wajib diisi"));
         }
         break;
 
     case 'PUT':
-        if (!empty($data->id) && !empty($data->anggota_id) && isset($data->nominal)) {
+        $cid = intval($data->id ?? 0);
+        $aid = !empty($data->anggota_id) ? intval($data->anggota_id) : (!empty($data->id_anggota) ? intval($data->id_anggota) : intval($data->anggotaId ?? 0));
+        $nominal = isset($data->nominal) ? floatval($data->nominal) : 0.0;
+
+        if ($cid > 0 && $aid <= 0) {
+            $stmt_find = $conn->prepare("SELECT anggota_id FROM cicilan WHERE id = ?");
+            $stmt_find->execute(array($cid));
+            $aid = intval($stmt_find->fetchColumn() ?: 0);
+        }
+
+        if ($cid > 0 && $aid > 0 && $nominal > 0) {
             try {
                 $conn->beginTransaction();
+
+                $tgl = date('Y-m-d');
+                if (!empty($data->tanggal)) {
+                    if (is_numeric($data->tanggal)) {
+                        $ts = intval($data->tanggal);
+                        if ($ts > 9999999999) $ts = intval($ts / 1000);
+                        $tgl = date('Y-m-d', $ts);
+                    } else {
+                        $tgl = date('Y-m-d', strtotime($data->tanggal));
+                    }
+                }
+                $keterangan = !empty($data->keterangan) ? $data->keterangan : 'Pembayaran Cicilan';
+
                 $query = "UPDATE cicilan SET anggota_id=?, nominal=?, tanggal=?, keterangan=? WHERE id=?";
                 $stmt = $conn->prepare($query);
                 $stmt->execute(array(
-                    $data->anggota_id,
-                    $data->nominal,
-                    $data->tanggal,
-                    $data->keterangan,
-                    $data->id
+                    $aid,
+                    $nominal,
+                    $tgl,
+                    $keterangan,
+                    $cid
                 ));
                 
-                recalculateAnggotaCicilan($conn, $data->anggota_id);
+                recalculateAnggotaCicilan($conn, $aid);
                 $conn->commit();
                 
-                echo json_encode(array("status" => "success", "message" => "Cicilan berhasil diupdate"));
+                echo json_encode(array(
+                    "status" => "success", 
+                    "message" => "Cicilan berhasil diupdate",
+                    "id" => $cid,
+                    "anggota_id" => $aid,
+                    "nominal" => $nominal
+                ));
             } catch (Throwable $e) {
                 if ($conn->inTransaction()) {
                     $conn->rollBack();
@@ -88,6 +143,9 @@ switch ($method) {
                 http_response_code(500);
                 echo json_encode(array("status" => "error", "message" => "Gagal update cicilan: " . $e->getMessage()));
             }
+        } else {
+            http_response_code(400);
+            echo json_encode(array("status" => "error", "message" => "ID cicilan, anggota_id, dan nominal tidak valid"));
         }
         break;
 
