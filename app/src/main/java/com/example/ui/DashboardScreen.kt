@@ -106,22 +106,31 @@ fun DashboardScreen(navController: NavController, viewModel: CommunityViewModel)
 
     val onNavigateFinance: (String) -> Unit = { route ->
         val currentRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase()
-        val statusVerif = SessionManager.getStatusVerifikasi(context).trim()
-        val isVerified = isUserVerified && SessionManager.isVerified(context)
+        val isFullAccessRole = currentRole in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")
 
-        // Pengecekan Akses (Akses Terbatas):
-        // - Hanya tampilkan dialog "Akses Terbatas" jika userRole == "GUEST" ATAU statusVerifikasi == "0".
-        // - Jika userRole berisi "ADMIN", "BENDAHARA", "PENGURUS", atau "MEMBER", izinkan akun membuka menu secara penuh.
-        val isRestricted = (currentRole == "GUEST" || statusVerif == "0" || !isVerified) &&
-                currentRole !in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")
-
-        if (isRestricted) {
-            showGuestAlert = true
-        } else {
+        if (isFullAccessRole) {
             try {
                 navController.navigate(route)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        } else {
+            // Untuk ANGGOTA dan GUEST:
+            // Memiliki LIMITED ACCESS (Read-Only) untuk melihat rincian kas, laporan, cicilan, dan anggota.
+            // Role GUEST atau ANGGOTA aktif tidak boleh diblokir dengan popup "belum diverifikasi" saat membuka kartu menu.
+            // Popup hanya dimunculkan jika akun anggota tertentu secara spesifik berstatus belum diverifikasi ("0").
+            val statusVerif = SessionManager.getStatusVerifikasi(context).trim()
+            val isExplicitlyUnverified = (statusVerif == "0" || (!isUserVerified && !SessionManager.isVerified(context))) &&
+                    currentRole != "GUEST" && currentRole.isNotBlank()
+
+            if (isExplicitlyUnverified) {
+                showGuestAlert = true
+            } else {
+                try {
+                    navController.navigate(route)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }

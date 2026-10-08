@@ -80,6 +80,42 @@
                         android:textSize="14sp" />
 
                     <TextView
+                        android:id="@+id/tvNomorUrutAnggota"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Nomor Urut: -"
+                        android:textColor="#94A3B8"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvNoHpAnggota"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="No HP: -"
+                        android:textColor="#CBD5E1"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvAlamatAnggota"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Alamat: -"
+                        android:textColor="#CBD5E1"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/tvTglGabungAnggota"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Tanggal Bergabung: -"
+                        android:textColor="#CBD5E1"
+                        android:textSize="14sp" />
+
+                    <TextView
                         android:id="@+id/tvStatusAnggota"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -87,6 +123,17 @@
                         android:text="Status: VERIFIED"
                         android:textColor="#4ADE80"
                         android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btnEditAnggota"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="14dp"
+                        android:text="✏️ EDIT ANGGOTA"
+                        android:textColor="#FFFFFF"
+                        android:backgroundTint="#3B82F6"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 

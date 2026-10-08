@@ -1,9 +1,7 @@
 package com.example
 
 import com.example.data.Anggota
-import com.example.network.ApiClient
 import com.example.network.NullToEmptyStringAdapter
-import com.example.network.PrimitiveAdapters
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.runBlocking
@@ -17,7 +15,6 @@ class RetrofitTest2 {
     fun testRetrofitRequest() = runBlocking {
         val moshi = Moshi.Builder()
             .add(NullToEmptyStringAdapter)
-            .add(PrimitiveAdapters)
             .add(KotlinJsonAdapterFactory())
             .build()
         

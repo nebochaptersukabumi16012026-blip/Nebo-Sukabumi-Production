@@ -2,6 +2,7 @@ package com.example.ui
 
 import android.os.Bundle
 import android.view.View
+import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -15,6 +16,7 @@ import com.example.R
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.Locale
 
 class DetailAnggotaActivity : AppCompatActivity() {
@@ -22,7 +24,12 @@ class DetailAnggotaActivity : AppCompatActivity() {
     private lateinit var toolbar: Toolbar
     private lateinit var tvNamaAnggota: TextView
     private lateinit var tvNraAnggota: TextView
+    private lateinit var tvNomorUrutAnggota: TextView
+    private lateinit var tvNoHpAnggota: TextView
+    private lateinit var tvAlamatAnggota: TextView
+    private lateinit var tvTglGabungAnggota: TextView
     private lateinit var tvStatusAnggota: TextView
+    private lateinit var btnEditAnggota: Button
 
     private lateinit var cardDataKas: CardView
     private lateinit var tvTotalKas: TextView
@@ -35,6 +42,7 @@ class DetailAnggotaActivity : AppCompatActivity() {
 
     private lateinit var progressBar: ProgressBar
 
+    private var targetId: Int = 0
     private var targetNra: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,7 +59,12 @@ class DetailAnggotaActivity : AppCompatActivity() {
         toolbar = findViewById(R.id.toolbar)
         tvNamaAnggota = findViewById(R.id.tvNamaAnggota)
         tvNraAnggota = findViewById(R.id.tvNraAnggota)
+        tvNomorUrutAnggota = findViewById(R.id.tvNomorUrutAnggota)
+        tvNoHpAnggota = findViewById(R.id.tvNoHpAnggota)
+        tvAlamatAnggota = findViewById(R.id.tvAlamatAnggota)
+        tvTglGabungAnggota = findViewById(R.id.tvTglGabungAnggota)
         tvStatusAnggota = findViewById(R.id.tvStatusAnggota)
+        btnEditAnggota = findViewById(R.id.btnEditAnggota)
 
         cardDataKas = findViewById(R.id.cardDataKas)
         tvTotalKas = findViewById(R.id.tvTotalKas)
@@ -73,7 +86,12 @@ class DetailAnggotaActivity : AppCompatActivity() {
     }
 
     private fun extractIntentData() {
-        // Ambil NRA dari intent, jika tidak ada ambil dari user yang sedang login di SessionManager
+        // ID anggota adalah identitas utama
+        targetId = intent?.getIntExtra("id", 0)
+            ?: intent?.getIntExtra("ID", 0)
+            ?: intent?.getIntExtra("anggota_id", 0)
+            ?: 0
+
         val nraIntent = intent?.getStringExtra("nra")
             ?: intent?.getStringExtra("NRA")
             ?: ""
@@ -81,7 +99,7 @@ class DetailAnggotaActivity : AppCompatActivity() {
             nraIntent.trim()
         } else {
             SessionManager.getUserNra(this).ifBlank {
-                SessionManager.getNra(this).ifBlank { "0001" }
+                SessionManager.getNra(this).ifBlank { "" }
             }.trim()
         }
 
@@ -91,20 +109,22 @@ class DetailAnggotaActivity : AppCompatActivity() {
         if (namaIntent.isNotBlank()) {
             tvNamaAnggota.text = "Nama: $namaIntent"
         }
-        tvNraAnggota.text = "NRA: $targetNra"
+        if (targetNra.isNotBlank()) {
+            tvNraAnggota.text = "NRA: $targetNra"
+        }
     }
 
     /**
-     * Memanggil API: https://nebosukabumi.net/api/get_detail_anggota.php?nra={NRA_TARGET}&role_login={USER_ROLE}&nra_login={USER_NRA}
+     * Memanggil API: https://nebosukabumi.net/api/get_detail_anggota.php?id={ID_TARGET}&nra={NRA_TARGET}&role_login={USER_ROLE}&nra_login={USER_NRA}
      * Logika Hak Akses:
-     * - Role "ADMIN", "BENDAHARA", "DEVELOPER" -> Full Akses (cardDataCicilan SELALU VISIBLE)
+     * - Role "ADMIN", "BENDAHARA", "DEVELOPER" -> Full Akses (cardDataCicilan & Edit SELALU VISIBLE)
      * - Pemilik akun sendiri (nra_login == nra_target) -> VISIBLE
      * - can_see_cicilan == true dari response -> VISIBLE
-     * - Member biasa membuka profil orang lain -> GONE
+     * - Member biasa / Guest -> Read-Only, Edit GONE
      */
     fun loadDetailAnggota() {
-        if (targetNra.isBlank()) {
-            Toast.makeText(this, "NRA Anggota tidak valid", Toast.LENGTH_SHORT).show()
+        if (targetId <= 0 && targetNra.isBlank()) {
+            Toast.makeText(this, "ID atau NRA Anggota tidak valid", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -118,10 +138,13 @@ class DetailAnggotaActivity : AppCompatActivity() {
         val encodedRole = try { URLEncoder.encode(loggedInRole, "UTF-8") } catch (e: Exception) { loggedInRole }
         val encodedNraLogin = try { URLEncoder.encode(loggedInNra, "UTF-8") } catch (e: Exception) { loggedInNra }
 
-        val url = "https://nebosukabumi.net/api/get_detail_anggota.php?nra=$encodedNra&role_login=$encodedRole&nra_login=$encodedNraLogin"
+        val url = "https://nebosukabumi.net/api/get_detail_anggota.php?id=$targetId&nra=$encodedNra&role_login=$encodedRole&nra_login=$encodedNraLogin"
 
         val isPrivileged = loggedInRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER", "PENGURUS")
+        val canEdit = loggedInRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER")
         val isSelf = loggedInNra.isNotBlank() && loggedInNra.equals(targetNra, ignoreCase = true)
+
+        btnEditAnggota.visibility = if (canEdit) View.VISIBLE else View.GONE
 
         val request = StringRequest(
             Request.Method.GET,
@@ -131,6 +154,39 @@ class DetailAnggotaActivity : AppCompatActivity() {
                 try {
                     val rootJson = JSONObject(response)
                     val dataObj = rootJson.optJSONObject("data") ?: rootJson
+
+                    val fetchedId = dataObj.optInt("id", targetId)
+                    if (fetchedId > 0) {
+                        targetId = fetchedId
+                    }
+
+                    // Parsing Data Pribadi
+                    val nama = dataObj.optString("nama", "")
+                    val nra = dataObj.optString("nra", "")
+                    val noWa = dataObj.optString("no_wa", dataObj.optString("nomor_telepon", dataObj.optString("no_hp", "")))
+                    val alamat = dataObj.optString("alamat", "")
+                    val tglGabung = dataObj.optString("tgl_gabung", dataObj.optString("tanggal_bergabung", ""))
+                    val nomorUrut = dataObj.optString("nomor_urut", dataObj.optString("nomorUrut", ""))
+                    val status = dataObj.optString("status", "")
+
+                    if (nama.isNotBlank()) tvNamaAnggota.text = "Nama: $nama"
+                    if (nra.isNotBlank()) tvNraAnggota.text = "NRA: $nra"
+                    tvNomorUrutAnggota.text = "Nomor Urut: ${if (nomorUrut.isNotBlank()) nomorUrut else "-"}"
+                    tvNoHpAnggota.text = "No HP: ${if (noWa.isNotBlank()) noWa else "-"}"
+                    tvAlamatAnggota.text = "Alamat: ${if (alamat.isNotBlank()) alamat else "-"}"
+
+                    // Format tanggal bergabung ke bahasa Indonesia
+                    val formattedDate = formatDateString(tglGabung)
+                    tvTglGabungAnggota.text = "Tanggal Bergabung: $formattedDate"
+
+                    if (status.isNotBlank()) {
+                        val statusText = if (status == "1" || status.equals("VERIFIED", ignoreCase = true) || status.equals("Aktif", ignoreCase = true)) {
+                            "Status: VERIFIED"
+                        } else {
+                            "Status: $status"
+                        }
+                        tvStatusAnggota.text = statusText
+                    }
 
                     // Parsing Response JSON Object `data` dengan .optDouble()
                     val totalKas = dataObj.optDouble("total_kas", dataObj.optDouble("uang_kas", 0.0))
@@ -161,25 +217,6 @@ class DetailAnggotaActivity : AppCompatActivity() {
                         cardDataCicilan.visibility = View.GONE
                     }
 
-                    // Sinkronisasi data identitas diri jika disediakan API
-                    val nama = dataObj.optString("nama", "")
-                    val nra = dataObj.optString("nra", "")
-                    val status = dataObj.optString("status", "")
-                    if (nama.isNotBlank()) {
-                        tvNamaAnggota.text = "Nama: $nama"
-                    }
-                    if (nra.isNotBlank()) {
-                        tvNraAnggota.text = "NRA: $nra"
-                    }
-                    if (status.isNotBlank()) {
-                        val statusText = if (status == "1" || status.equals("VERIFIED", ignoreCase = true) || status.equals("Aktif", ignoreCase = true)) {
-                            "Status: VERIFIED"
-                        } else {
-                            "Status: $status"
-                        }
-                        tvStatusAnggota.text = statusText
-                    }
-
                 } catch (e: Exception) {
                     e.printStackTrace()
                     Toast.makeText(this, "Format data server tidak sesuai", Toast.LENGTH_SHORT).show()
@@ -193,6 +230,25 @@ class DetailAnggotaActivity : AppCompatActivity() {
         )
 
         Volley.newRequestQueue(this).add(request)
+    }
+
+    private fun formatDateString(rawDate: String): String {
+        val trimmed = rawDate.trim()
+        if (trimmed.isBlank() || trimmed == "0000-00-00" || trimmed == "-") return "-"
+        return try {
+            val outputFormat = SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID"))
+            val inputFormat = if (trimmed.contains("-")) {
+                SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            } else if (trimmed.contains("/")) {
+                SimpleDateFormat("dd/MM/yyyy", Locale.US)
+            } else {
+                null
+            }
+            val parsed = inputFormat?.parse(trimmed)
+            if (parsed != null) outputFormat.format(parsed) else trimmed
+        } catch (e: Exception) {
+            trimmed
+        }
     }
 
     /**

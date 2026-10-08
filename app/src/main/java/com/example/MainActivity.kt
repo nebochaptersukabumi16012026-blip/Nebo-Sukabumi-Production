@@ -255,6 +255,11 @@ class MainActivity : ComponentActivity() {
                         val id = obj.optInt("id", 0)
                         val nama = obj.optString("nama", "Anggota")
                         val nra = obj.optString("nra", "-")
+                        val noWa = obj.optString("no_wa", obj.optString("nomor_telepon", obj.optString("no_hp", "")))
+                        val alamat = obj.optString("alamat", "")
+                        val tglGabung = obj.optString("tgl_gabung", obj.optString("tanggal_bergabung", ""))
+                        val nomorUrut = obj.optString("nomor_urut", obj.optString("nomorUrut", obj.optString("no_urut", "")))
+                        val foto = if (obj.has("foto") && !obj.isNull("foto") && obj.optString("foto").isNotBlank()) obj.optString("foto") else null
                         val role = obj.optString("role", "MEMBER").trim()
                         val statusStr = obj.optString("status", "").trim()
                         val statusVerifStr = obj.optString("status_verifikasi", "").trim()
@@ -305,8 +310,12 @@ class MainActivity : ComponentActivity() {
                                 id = id,
                                 nama = nama,
                                 nra = nra,
+                                alamat = alamat,
+                                nomorTelepon = noWa,
+                                nomorUrut = nomorUrut,
                                 role = role,
                                 statusAktif = statusAktif,
+                                tanggalBergabung = tglGabung,
                                 uangKas = uangKas,
                                 iuranAniv = iuranAniv,
                                 hargaBarang = hargaBarang,
@@ -314,7 +323,8 @@ class MainActivity : ComponentActivity() {
                                 sisaCicilan = sisaCicilan,
                                 cicilanPerBulan = cicilanPerBulan,
                                 lamaCicilan = lamaCicilan,
-                                totalTagihan = totalTagihan
+                                totalTagihan = totalTagihan,
+                                foto = foto
                             )
                         )
                     }
@@ -345,11 +355,16 @@ class MainActivity : ComponentActivity() {
     fun fetchDashboardUserSession(onComplete: ((isVerified: Boolean, role: String) -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val currentRole = SessionManager.getRole(this@MainActivity).ifBlank { "MEMBER" }
-                val currentNra = SessionManager.getUserNra(this@MainActivity).ifBlank { "0001" }
+                val activeRole = SessionManager.getRole(this@MainActivity).trim().uppercase().ifBlank {
+                    (viewModel.loggedInUserRole.value ?: "").trim().uppercase().ifBlank { "MEMBER" }
+                }
+                val isPrivileged = activeRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER", "PENGURUS")
+                val activeNra = SessionManager.getUserNra(this@MainActivity).ifBlank {
+                    (viewModel.loggedInUserNra.value ?: "").ifBlank { "" }
+                }
                 val urlString = "https://nebosukabumi.net/api/get_dashboard.php?role=" +
-                        java.net.URLEncoder.encode(currentRole, "UTF-8") +
-                        "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8")
+                        java.net.URLEncoder.encode(activeRole, "UTF-8") +
+                        (if (activeNra.isNotBlank() && activeNra != "-" && activeNra != "GUEST") "&nra=" + java.net.URLEncoder.encode(activeNra, "UTF-8") else "")
 
                 var jsonString = ""
                 try {
@@ -374,8 +389,8 @@ class MainActivity : ComponentActivity() {
                     // Fallback ke dashboard.php jika routing get_dashboard.php diarahkan ke dashboard.php
                     try {
                         val fallbackUrl = URL("https://nebosukabumi.net/api/dashboard.php?role=" +
-                                java.net.URLEncoder.encode(currentRole, "UTF-8") +
-                                "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8"))
+                                java.net.URLEncoder.encode(activeRole, "UTF-8") +
+                                (if (activeNra.isNotBlank() && activeNra != "-" && activeNra != "GUEST") "&nra=" + java.net.URLEncoder.encode(activeNra, "UTF-8") else ""))
                         val conn = (fallbackUrl.openConnection() as HttpURLConnection).apply {
                             requestMethod = "GET"
                             connectTimeout = 8000
@@ -419,23 +434,28 @@ class MainActivity : ComponentActivity() {
                     }.trim()
 
                     val roleStr = when {
+                        isPrivileged -> activeRole
+                        activeRole == "GUEST" -> "GUEST"
                         userObj.has("role") -> userObj.optString("role")
                         root.has("role") -> root.optString("role")
-                        else -> currentRole
+                        else -> activeRole
                     }.trim().uppercase()
 
-                    // 1. Parsing status verifikasi: status_verifikasi == "1" ATAU status == "1" / "VERIFIED" / "Aktif"
-                    val isVerified = statusVerifStr == "1" ||
-                            statusStr == "1" ||
-                            statusStr.equals("VERIFIED", ignoreCase = true) ||
-                            statusStr.equals("Aktif", ignoreCase = true) ||
-                            userObj.optInt("status_verifikasi", -1) == 1 ||
-                            userObj.optInt("status", -1) == 1 ||
-                            userObj.optBoolean("is_verified", false) ||
-                            roleStr in listOf("ADMIN", "BENDAHARA", "PENGURUS", "DEVELOPER")
+                    // 1. Parsing status verifikasi
+                    val isVerified = if (isPrivileged || roleStr == "GUEST") {
+                        true
+                    } else {
+                        statusVerifStr == "1" ||
+                                statusStr == "1" ||
+                                statusStr.equals("VERIFIED", ignoreCase = true) ||
+                                statusStr.equals("Aktif", ignoreCase = true) ||
+                                userObj.optInt("status_verifikasi", -1) == 1 ||
+                                userObj.optInt("status", -1) == 1 ||
+                                userObj.optBoolean("is_verified", false)
+                    }
 
                     val statusVerifikasiStr = if (isVerified) "1" else "0"
-                    val finalRole = if (roleStr.isNotBlank()) roleStr else currentRole.uppercase()
+                    val finalRole = if (roleStr.isNotBlank()) roleStr else activeRole
 
                     // Simpan status dan role terbaru tersebut ke SessionManager / SharedPreferences
                     SessionManager.updateRoleAndVerification(
@@ -469,11 +489,15 @@ class MainActivity : ComponentActivity() {
     fun fetchDashboardData(onComplete: ((com.example.network.DashboardData) -> Unit)? = null) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val currentRole = SessionManager.getRole(this@MainActivity).ifBlank { "MEMBER" }
-                val currentNra = SessionManager.getUserNra(this@MainActivity).ifBlank { "0001" }
+                val currentRole = SessionManager.getRole(this@MainActivity).ifBlank {
+                    (viewModel.loggedInUserRole.value ?: "").ifBlank { "MEMBER" }
+                }
+                val currentNra = SessionManager.getUserNra(this@MainActivity).ifBlank {
+                    (viewModel.loggedInUserNra.value ?: "").ifBlank { "" }
+                }
                 val urlString = "https://nebosukabumi.net/api/get_dashboard.php?role=" +
                         java.net.URLEncoder.encode(currentRole, "UTF-8") +
-                        "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8")
+                        (if (currentNra.isNotBlank() && currentNra != "-" && currentNra != "GUEST") "&nra=" + java.net.URLEncoder.encode(currentNra, "UTF-8") else "")
 
                 var jsonStr = ""
                 try {
@@ -557,14 +581,31 @@ class MainActivity : ComponentActivity() {
                     val anggotaMencicil = dataObj.optInt("anggota_mencicil", root.optInt("anggota_mencicil", 0))
 
                     // Parsing User Session dari get_dashboard.php
-                    val userObj = root.optJSONObject("user") ?: dataObj.optJSONObject("user") ?: dataObj
-                    val userRole = userObj.optString("role", currentRole).uppercase()
-                    val isVerified = userObj.optBoolean("is_verified", userObj.optString("status_verifikasi", "1") == "1")
+                    // Amankan role aktif agar ADMIN, BENDAHARA, DEVELOPER tidak tertimpa oleh data query get_dashboard.php
+                    val activeRole = SessionManager.getRole(this@MainActivity).trim().uppercase().ifBlank {
+                        (viewModel.loggedInUserRole.value ?: "").trim().uppercase()
+                    }
+                    val isPrivileged = activeRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER", "PENGURUS")
+
+                    val userObj = root.optJSONObject("user") ?: dataObj.optJSONObject("user")
+                    val finalRole = if (isPrivileged) {
+                        activeRole
+                    } else if (activeRole == "GUEST") {
+                        "GUEST"
+                    } else {
+                        userObj?.optString("role")?.trim()?.uppercase()?.ifBlank { activeRole } ?: activeRole.ifBlank { "MEMBER" }
+                    }
+
+                    val isVerified = if (isPrivileged || finalRole == "GUEST") {
+                        true
+                    } else {
+                        userObj?.optBoolean("is_verified", userObj.optString("status_verifikasi", "1") == "1") ?: true
+                    }
                     val statusVerifStr = if (isVerified) "1" else "0"
 
                     SessionManager.updateRoleAndVerification(
                         context = this@MainActivity,
-                        role = userRole,
+                        role = finalRole,
                         isVerified = isVerified,
                         statusVerifikasi = statusVerifStr
                     )
@@ -617,7 +658,7 @@ class MainActivity : ComponentActivity() {
                         findViewById<android.widget.TextView?>(R.id.tvTotalKas)?.text = formatRupiah(totalSaldo)
 
                         viewModel.setDashboardData(parsedData)
-                        viewModel.setLoggedInUserRole(userRole)
+                        viewModel.setLoggedInUserRole(finalRole)
                         viewModel.setUserVerified(isVerified)
                         onComplete?.invoke(parsedData)
                     }
@@ -671,7 +712,9 @@ class MainActivity : ComponentActivity() {
      *   izinkan akun membuka menu Laporan Kas, Cicilan, dan Daftar Anggota secara penuh.
      */
     fun hasAccessToFeatures(): Boolean {
-        val userRole = SessionManager.getRole(this).trim().uppercase()
+        val userRole = SessionManager.getRole(this).trim().uppercase().ifBlank {
+            (viewModel.loggedInUserRole.value ?: "").trim().uppercase()
+        }
         val statusVerifikasi = SessionManager.getStatusVerifikasi(this).trim()
 
         // Role ADMIN, BENDAHARA, PENGURUS, DEVELOPER selalu memiliki akses penuh
@@ -679,12 +722,12 @@ class MainActivity : ComponentActivity() {
             return true
         }
 
-        // Hanya tampilkan dialog "Akses Terbatas" jika userRole == "GUEST" ATAU statusVerifikasi == "0"
-        if (userRole == "GUEST" || statusVerifikasi == "0") {
-            return false
+        // Role GUEST memiliki akses terbatas (Read-Only) dan TIDAK BOLEH terkena popup unverified
+        if (userRole == "GUEST") {
+            return true
         }
 
-        // Jika userRole berisi "MEMBER" atau "ANGGOTA" dan statusVerifikasi != "0", izinkan akses penuh
+        // Untuk ANGGOTA/MEMBER: hanya blokir jika statusVerifikasi secara eksplisit "0"
         if (userRole in listOf("MEMBER", "ANGGOTA") && statusVerifikasi != "0") {
             return true
         }

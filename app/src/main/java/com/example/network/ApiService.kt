@@ -24,7 +24,9 @@ data class LoginData(
     val nama: String? = null,
     val nra: String? = null,
     val require_new_password: Boolean? = false,
-    val request_id: Int? = null
+    val request_id: Int? = null,
+    val is_verified: Boolean? = null,
+    val status_verifikasi: String? = null
 )
 
 data class GantiPasswordRequest(

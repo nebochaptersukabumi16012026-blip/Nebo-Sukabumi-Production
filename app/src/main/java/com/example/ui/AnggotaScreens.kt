@@ -253,23 +253,23 @@ fun AnggotaDetailScreen(
         return
     }
 
-    // Role-based permission check (RBAC):
-    // ANGGOTA dan GUEST memiliki Full Read Access (lihat detail cicilan & profil),
-    // namun SEMUA tombol tindakan sensitif (Hapus, Edit, Bayar Cicilan) disembunyikan total (View.GONE).
-    val isRestrictedRole = userRole?.uppercase() in listOf("ANGGOTA", "GUEST")
-    val canManageUsers = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "DEVELOPER"))
-    val canEditAnggota = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER"))
-    val isDeveloper = userRole?.equals("DEVELOPER", ignoreCase = true) == true
-    val isBendahara = !isRestrictedRole && (userRole?.uppercase() in listOf("BENDAHARA", "ADMIN", "DEVELOPER"))
-    // ADMIN, BENDAHARA, dan DEVELOPER diizinkan input kas/aniv dan menghapus riwayat pembayaran
-    val canManageFinance = !isRestrictedRole && (userRole?.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER"))
-    val canInputKasAniv = canManageFinance
-    val canDeleteTransaction = canManageFinance
-
     val loggedInNra = (loggedInUserNra ?: SessionManager.getUserNra(context)).trim()
     val targetNra = anggota.nra.trim()
     val targetId = anggota.id
-    val activeRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase()
+    val activeRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase().ifBlank { "ANGGOTA" }
+
+    // Role-based permission check (RBAC):
+    // ANGGOTA dan GUEST memiliki Full Read Access (lihat detail kas & profil),
+    // namun SEMUA tombol tindakan sensitif (Hapus, Edit, Bayar Cicilan) disembunyikan total.
+    val isRestrictedRole = activeRole in listOf("ANGGOTA", "GUEST", "MEMBER")
+    val canManageUsers = activeRole in listOf("ADMIN", "DEVELOPER")
+    val canEditAnggota = activeRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER")
+    val isDeveloper = activeRole == "DEVELOPER"
+    val isBendahara = activeRole in listOf("BENDAHARA", "ADMIN", "DEVELOPER")
+    // ADMIN, BENDAHARA, dan DEVELOPER diizinkan input kas/aniv dan mengedit/menghapus
+    val canManageFinance = activeRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER")
+    val canInputKasAniv = canManageFinance
+    val canDeleteTransaction = canManageFinance
 
     // Aturan Hak Akses (Privasi Data Cicilan):
     // 1. Jika melihat detail profil diri sendiri (ID/NRA login == ID/NRA target) -> BOLEH
@@ -1004,6 +1004,16 @@ fun AnggotaDetailScreen(
 fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewModel, memberId: Int) {
     val anggota = if (memberId != -1) viewModel.getAnggotaById(memberId).collectAsState(initial = null).value else null
     val userRole by viewModel.loggedInUserRole.collectAsState()
+    val context = LocalContext.current
+
+    val activeRole = (userRole ?: SessionManager.getRole(context)).trim().uppercase().ifBlank { "ANGGOTA" }
+    val canEditOrAdd = activeRole in listOf("ADMIN", "BENDAHARA", "DEVELOPER")
+    if (!canEditOrAdd) {
+        LaunchedEffect(Unit) {
+            Toast.makeText(context, "Akses ditolak: Hanya Admin, Bendahara, dan Developer yang dapat mengubah data anggota.", Toast.LENGTH_LONG).show()
+            navController.popBackStack()
+        }
+    }
 
     var nama by remember { mutableStateOf("") }
     var nra by remember { mutableStateOf("") }
@@ -1017,7 +1027,6 @@ fun AnggotaFormScreen(navController: NavController, viewModel: CommunityViewMode
     var lamaCicilanStr by remember { mutableStateOf("") }
     
     var isSaving by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     
     var hasInitialized by remember { mutableStateOf(false) }
 

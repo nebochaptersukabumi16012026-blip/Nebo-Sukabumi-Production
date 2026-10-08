@@ -305,6 +305,17 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
             _loggedInUserId.value = if (savedUserId != -1) savedUserId else -1
             _loggedInUserName.value = savedUserName
             _loggedInUserNra.value = savedUserNra
+
+            val isPriv = savedRole.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER", "PENGURUS")
+            SessionManager.saveUserSession(
+                context = application,
+                userId = if (savedUserId != -1) savedUserId else -1,
+                userName = savedUserName ?: "",
+                userNra = savedUserNra ?: "",
+                role = savedRole,
+                isVerified = if (isPriv || savedRole.equals("GUEST", ignoreCase = true)) true else SessionManager.isVerified(application),
+                statusVerifikasi = if (isPriv || savedRole.equals("GUEST", ignoreCase = true)) "1" else SessionManager.getStatusVerifikasi(application)
+            )
         }
 
         initFirebaseRealtimeListener()
@@ -1109,6 +1120,16 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                     _loggedInUserName.value = "Developer Nebo"
                     _loggedInUserNra.value = "DEV-001"
                     
+                    SessionManager.saveUserSession(
+                        context = getApplication(),
+                        userId = 9999,
+                        userName = "Developer Nebo",
+                        userNra = "DEV-001",
+                        role = "DEVELOPER",
+                        isVerified = true,
+                        statusVerifikasi = "1"
+                    )
+
                     sharedPrefs.edit()
                         .putString("session_role", "DEVELOPER")
                         .putInt("session_user_id", 9999)
@@ -1163,6 +1184,17 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                     _loggedInUserName.value = localMatch.nama
                     _loggedInUserNra.value = localMatch.nra
                     
+                    val isPrivilegedLocal = localMatch.role.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER", "PENGURUS")
+                    SessionManager.saveUserSession(
+                        context = getApplication(),
+                        userId = localMatch.id,
+                        userName = localMatch.nama,
+                        userNra = localMatch.nra,
+                        role = localMatch.role,
+                        isVerified = if (isPrivilegedLocal) true else (localMatch.statusAktif == 1),
+                        statusVerifikasi = if (isPrivilegedLocal) "1" else (if (localMatch.statusAktif == 1) "1" else "0")
+                    )
+
                     sharedPrefs.edit()
                         .putString("session_role", localMatch.role)
                         .putInt("session_user_id", localMatch.id)
@@ -1226,6 +1258,17 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
                             _loggedInUserId.value = data.id
                             _loggedInUserName.value = memberName
                             _loggedInUserNra.value = memberNra
+
+                            val isPrivilegedApi = data.role.uppercase() in listOf("ADMIN", "BENDAHARA", "DEVELOPER", "PENGURUS")
+                            SessionManager.saveUserSession(
+                                context = getApplication(),
+                                userId = data.id,
+                                userName = memberName,
+                                userNra = memberNra,
+                                role = data.role,
+                                isVerified = if (isPrivilegedApi) true else (data.is_verified ?: true),
+                                statusVerifikasi = if (isPrivilegedApi) "1" else (data.status_verifikasi ?: "1")
+                            )
                             
                             if (data.require_new_password == true) {
                                 _requireNewPassword.value = true
@@ -1308,10 +1351,18 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
     }
     fun loginGuest() {
         _loggedInUserRole.value = "GUEST"
-        SessionManager.setRole("GUEST")
         _loggedInUserId.value = -1
         _loggedInUserName.value = "Guest"
         _loggedInUserNra.value = "-"
+        SessionManager.saveUserSession(
+            context = getApplication(),
+            userId = -1,
+            userName = "Guest",
+            userNra = "GUEST",
+            role = "GUEST",
+            isVerified = true,
+            statusVerifikasi = "1"
+        )
         sharedPrefs.edit()
             .putString("session_role", "GUEST")
             .putInt("session_user_id", -1)
@@ -1322,10 +1373,10 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun logout() {
         _loggedInUserRole.value = null
-        SessionManager.setRole(null)
         _loggedInUserId.value = null
         _loggedInUserName.value = null
         _loggedInUserNra.value = null
+        SessionManager.clearSession(getApplication())
         sharedPrefs.edit()
             .remove("session_role")
             .remove("session_user_id")
