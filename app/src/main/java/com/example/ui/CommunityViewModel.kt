@@ -1959,6 +1959,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repository.deleteKasKeliling(kasKeliling)
             logAction("Hapus Kas Keliling", "Kas Keliling", "Menghapus transaksi ${kasKeliling.jenisTransaksi}")
+            repository.syncFromApi()
             if (isFirebaseAvailable && kasKeliling.firestoreId.isNotEmpty() && !kasKeliling.firestoreId.startsWith("local_")) {
                 try {
                     val db = FirebaseFirestore.getInstance()
@@ -2053,6 +2054,7 @@ class CommunityViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repository.deletePengeluaran(pengeluaran)
             logAction("Hapus Pengeluaran", "Pengeluaran", "Menghapus pengeluaran ${pengeluaran.jenisKas}")
+            repository.syncFromApi()
             if (isFirebaseAvailable && pengeluaran.firestoreId.isNotEmpty()) {
                 try {
                     val db = FirebaseFirestore.getInstance()

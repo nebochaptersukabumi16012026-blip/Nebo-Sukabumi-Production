@@ -22,8 +22,8 @@ try {
     // 1. Ambil data lengkap dari tabel anggota (master keuangan, kas, & cicilan)
     // dan padukan dengan status verifikasi terbaru dari users jika ada
     $query = "SELECT a.id, a.nama, a.nra, a.no_wa, a.alamat, a.tgl_gabung, a.nomor_urut, a.foto, a.statusAktif,
-                     COALESCE(u.role, a.role, 'Anggota') AS role,
-                     COALESCE(u.status, IF(a.statusAktif = 1, 'VERIFIED', 'PENDING')) AS status,
+                     COALESCE(MAX(u.role), a.role, 'Anggota') AS role,
+                     COALESCE(MAX(u.status), IF(a.statusAktif = 1, 'VERIFIED', 'PENDING')) AS status,
                      COALESCE(NULLIF(a.uang_kas, 0), NULLIF(a.uangKas, 0), 0) AS uang_kas,
                      COALESCE(NULLIF(a.iuran_aniv, 0), NULLIF(a.iuranAniv, 0), 0) AS iuran_aniv,
                      COALESCE(NULLIF(a.harga_barang, 0), NULLIF(a.hargaBarang, 0), 0) AS harga_barang,
@@ -35,6 +35,7 @@ try {
                      COALESCE(NULLIF(a.totalTagihan, 0), a.harga_barang, 0) AS totalTagihan
               FROM anggota a
               LEFT JOIN users u ON (u.username = a.nra OR u.id = a.id)
+              GROUP BY a.id
               ORDER BY a.nama ASC";
 
     try {
@@ -52,7 +53,13 @@ try {
 
     // 2. Format respon JSON secara presisi dengan semua kolom cicilan & status verifikasi
     $formattedList = [];
+    $seenMemberIds = [];
     foreach ($data as $row) {
+        $memberId = (int)$row['id'];
+        if (isset($seenMemberIds[$memberId])) {
+            continue; // Mencegah duplikasi data anggota
+        }
+        $seenMemberIds[$memberId] = true;
         $hargaBarang = floatval(isset($row['harga_barang']) ? $row['harga_barang'] : (isset($row['hargaBarang']) ? $row['hargaBarang'] : 0));
         $totalCicilan = floatval(isset($row['total_cicilan']) ? $row['total_cicilan'] : (isset($row['totalCicilan']) ? $row['totalCicilan'] : 0));
         $rawSisa = isset($row['sisa_cicilan']) ? $row['sisa_cicilan'] : (isset($row['sisaCicilan']) ? $row['sisaCicilan'] : 0);

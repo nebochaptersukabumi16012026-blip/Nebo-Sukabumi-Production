@@ -108,7 +108,7 @@ class CommunityRepository(
                 val anggotaRes = ApiClient.apiService.getAnggota()
                 if (anggotaRes.isSuccessful) {
                     anggotaRes.body()?.data?.let { list ->
-                        _allAnggota.value = list
+                        _allAnggota.value = list.distinctBy { it.id }
                     }
                 }
             } catch (e: Exception) {
@@ -554,9 +554,19 @@ class CommunityRepository(
             }
         } else if (pembayaran.jenisPembayaran.equals("CICILAN", ignoreCase = true)) {
             try { 
-                val resp = ApiClient.apiService.deleteCicilan(mapOf("id" to pembayaran.id)) 
+                val resp = ApiClient.apiService.hapusCicilan(mapOf(
+                    "id" to pembayaran.id,
+                    "id_cicilan" to pembayaran.id,
+                    "user_role" to userRole,
+                    "role" to userRole
+                )) 
                 isSuccess = resp.isSuccessful
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                try {
+                    val resp2 = ApiClient.apiService.deleteCicilan(mapOf("id" to pembayaran.id))
+                    isSuccess = resp2.isSuccessful
+                } catch (e2: Exception) {}
+            }
         } else {
             // Default KAS
             try { 
@@ -657,7 +667,7 @@ class CommunityRepository(
         _allPembayaran.value = pembayaranList
     }
 
-    fun setAllAnggota(list: List<Anggota>) { _allAnggota.value = list }
+    fun setAllAnggota(list: List<Anggota>) { _allAnggota.value = list.distinctBy { it.id } }
     fun setAllPembayaran(list: List<Pembayaran>) { _allPembayaran.value = list }
     fun setAllPengeluaran(list: List<Pengeluaran>) { _allPengeluaran.value = list }
     fun setAllKasKeliling(list: List<KasKeliling>) { _allKasKeliling.value = list }

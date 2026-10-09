@@ -3,753 +3,189 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEBO Sukabumi - Control Center & API Dashboard</title>
+    <title>NEBO Sukabumi - Sistem Informasi Komunitas</title>
     <!-- Fonts & Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --bg-dark: #070B14;
-            --surface-card: rgba(18, 26, 44, 0.7);
-            --surface-glass: rgba(25, 36, 62, 0.55);
-            --border-glass: rgba(255, 255, 255, 0.08);
-            --border-glow: rgba(56, 189, 248, 0.35);
-            --primary: #38bdf8;
-            --accent-green: #10b981;
-            --accent-yellow: #facc15;
-            --accent-purple: #a855f7;
-            --accent-rose: #f43f5e;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Plus Jakarta Sans', sans-serif;
-        }
-
-        body {
-            background-color: var(--bg-dark);
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.12) 0px, transparent 50%),
-                radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
-            background-attachment: fixed;
-            color: var(--text-main);
-            min-height: 100vh;
-            padding: 24px 16px 40px;
-            display: flex;
-            justify-content: center;
-        }
-
-        .dashboard-container {
-            width: 100%;
-            max-width: 1100px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
-
-        /* Glassmorphism Base */
-        .glass-panel {
-            background: var(--surface-card);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border-glass);
-            border-radius: 24px;
-            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
-            transition: border-color 0.3s ease, transform 0.3s ease;
-        }
-
-        /* Top Bar */
-        .header-bar {
-            padding: 20px 28px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-
-        .brand-section {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .brand-logo {
-            width: 48px;
-            height: 48px;
-            border-radius: 14px;
-            background: linear-gradient(135deg, #0284c7, #9333ea);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            color: white;
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
-        }
-
-        .brand-title h1 {
-            font-size: 20px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-            background: linear-gradient(to right, #ffffff, #93c5fd);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .brand-title p {
-            font-size: 13px;
-            color: var(--text-muted);
-            font-weight: 500;
-        }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.25);
-            border-radius: 50px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #34d399;
-        }
-
-        .dot-pulse {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #10b981;
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-            animation: pulse-green 2s infinite;
-        }
-
-        @keyframes pulse-green {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
-
-        /* Hero Grand Total */
-        .hero-grand-total {
-            padding: 32px 28px;
-            background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(88, 28, 135, 0.3) 100%);
-            border: 1px solid rgba(168, 85, 247, 0.25);
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .hero-grand-total::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, transparent 60%);
-            pointer-events: none;
-        }
-
-        .hero-label {
-            font-size: 13px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #c084fc;
-            margin-bottom: 8px;
-        }
-
-        .hero-value {
-            font-size: 40px;
-            font-weight: 800;
-            color: #ffffff;
-            letter-spacing: -0.5px;
-            text-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
-        }
-
-        .hero-sub {
-            margin-top: 12px;
-            font-size: 13px;
-            color: var(--text-muted);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-
-        .hero-sub span {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 4px 12px;
-            border-radius: 8px;
-            border: 1px solid var(--border-glass);
-        }
-
-        /* 4 Cards Grid */
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 18px;
-        }
-
-        .metric-card {
-            padding: 22px 20px;
-            background: var(--surface-glass);
-            position: relative;
-        }
-
-        .metric-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--border-glow);
-        }
-
-        .card-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 14px;
-        }
-
-        .card-tag {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-muted);
-        }
-
-        .card-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-
-        .icon-kas { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-        .icon-keliling { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
-        .icon-aniv { background: rgba(250, 204, 21, 0.15); color: #facc15; }
-        .icon-cicilan { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
-
-        .card-amount {
-            font-size: 24px;
-            font-weight: 800;
-            margin-bottom: 6px;
-        }
-
-        .val-kas { color: #34d399; }
-        .val-keliling { color: #38bdf8; }
-        .val-aniv { color: #facc15; }
-        .val-cicilan { color: #fb7185; }
-
-        .card-desc {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-
-        /* Detail Breakdown Section */
-        .breakdown-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 20px;
-        }
-
-        .breakdown-card {
-            padding: 24px;
-        }
-
-        .breakdown-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 18px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--border-glass);
-        }
-
-        .breakdown-header h2 {
-            font-size: 16px;
-            font-weight: 700;
-        }
-
-        .breakdown-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .breakdown-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 14px;
-            background: rgba(15, 23, 42, 0.4);
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.03);
-        }
-
-        .breakdown-item .label {
-            font-size: 13px;
-            color: var(--text-muted);
-            font-weight: 500;
-        }
-
-        .breakdown-item .num {
-            font-size: 15px;
-            font-weight: 700;
-        }
-
-        /* Quick Info Row */
-        .info-strip {
-            padding: 18px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-
-        .info-group {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .info-group i {
-            font-size: 18px;
-            color: var(--primary);
-        }
-
-        .info-group .title {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            font-weight: 600;
-        }
-
-        .info-group .data {
-            font-size: 15px;
-            font-weight: 700;
-            color: #ffffff;
-        }
-
-        /* Action Buttons */
-        .actions-bar {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .btn {
-            flex: 1;
-            min-width: 180px;
-            padding: 14px 20px;
-            border-radius: 14px;
-            border: none;
-            font-weight: 700;
-            font-size: 14px;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            text-decoration: none;
-            transition: all 0.2s ease;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #0284c7, #2563eb);
-            color: #ffffff;
-            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
-        }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #0369a1, #1d4ed8);
-            transform: translateY(-2px);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.05);
-            color: #38bdf8;
-            border: 1px solid rgba(56, 189, 248, 0.3);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(56, 189, 248, 0.1);
-            transform: translateY(-2px);
-        }
-
-        /* Footer */
-        .footer {
-            text-align: center;
-            padding: 12px;
-            font-size: 12px;
-            color: #64748b;
-        }
-
-        .footer code {
-            color: #38bdf8;
-            background: rgba(0, 0, 0, 0.4);
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-size: 11px;
-        }
-
-        /* Toast notification */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 1px solid var(--primary);
-            color: #ffffff;
-            padding: 14px 20px;
-            border-radius: 14px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            font-size: 13px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s ease;
-            z-index: 999;
-        }
-
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        @media (max-width: 640px) {
-            .hero-value { font-size: 30px; }
-            .header-bar { flex-direction: column; align-items: flex-start; }
-            .info-strip { flex-direction: column; align-items: flex-start; }
-            .btn { width: 100%; }
-        }
-    </style>
+    <!-- App CSS -->
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<div class="dashboard-container">
-
-    <!-- Header Panel -->
-    <header class="glass-panel header-bar">
-        <div class="brand-section">
-            <div class="brand-logo">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar" id="appSidebar">
+        <div class="sidebar-header">
+            <div class="brand-logo-icon">
                 <i class="fa-solid fa-shield-halved"></i>
             </div>
-            <div class="brand-title">
+            <div class="brand-text">
                 <h1>NEBO SUKABUMI</h1>
-                <p>Unified Server API & Web Control Center</p>
+                <p>Web Community System</p>
             </div>
         </div>
-        <div class="status-pill">
-            <div class="dot-pulse"></div>
-            <span id="apiStatusText">Server API Online</span>
-        </div>
-    </header>
 
-    <!-- Hero Grand Total Saldo -->
-    <section class="glass-panel hero-grand-total">
-        <div class="hero-label">Total Akumulasi Saldo Komunitas</div>
-        <div class="hero-value" id="valTotalSaldo">Memuat...</div>
-        <div class="hero-sub">
-            <span><i class="fa-solid fa-users"></i> <strong id="valTotalAnggota">0</strong> Anggota Terdaftar</span>
-            <span><i class="fa-solid fa-clock-rotate-left"></i> Sync: <strong id="valLastSync">-</strong></span>
-            <span><i class="fa-solid fa-bolt"></i> Auto Refresh: <strong id="valCountdown">30s</strong></span>
-        </div>
-    </section>
+        <nav class="sidebar-nav">
+            <div class="nav-section-title">Menu Utama</div>
+            <a href="#" class="nav-item active" data-route="dashboard">
+                <i class="fa-solid fa-house"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-route="anggota">
+                <i class="fa-solid fa-users"></i>
+                <span>Anggota</span>
+            </a>
 
-    <!-- 4 Primary Cards Grid -->
-    <section class="cards-grid">
-        <!-- Card 1: Kas Utama -->
-        <div class="glass-panel metric-card">
-            <div class="card-top">
-                <span class="card-tag">Kas Utama</span>
-                <div class="card-icon icon-kas"><i class="fa-solid fa-vault"></i></div>
-            </div>
-            <div class="card-amount val-kas" id="valSaldoKas">Rp 0</div>
-            <div class="card-desc">Saldo Kas Pokok Anggota</div>
-        </div>
+            <div class="nav-section-title">Keuangan & Kas</div>
+            <a href="#" class="nav-item" data-route="kas_utama">
+                <i class="fa-solid fa-vault"></i>
+                <span>Kas Utama</span>
+            </a>
+            <a href="#" class="nav-item" data-route="kas_keliling">
+                <i class="fa-solid fa-hand-holding-dollar"></i>
+                <span>Kas Keliling</span>
+            </a>
+            <a href="#" class="nav-item" data-route="pembayaran">
+                <i class="fa-solid fa-money-bill-transfer"></i>
+                <span>Pembayaran</span>
+            </a>
+            <a href="#" class="nav-item" data-route="pengeluaran">
+                <i class="fa-solid fa-receipt"></i>
+                <span>Pengeluaran</span>
+            </a>
+            <a href="#" class="nav-item" data-route="cicilan">
+                <i class="fa-solid fa-cart-shopping"></i>
+                <span>Cicilan & Arisan</span>
+            </a>
+            <a href="#" class="nav-item" data-route="anniversary">
+                <i class="fa-solid fa-cake-candles"></i>
+                <span>Anniversary</span>
+            </a>
+            <a href="#" class="nav-item" data-route="laporan">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>Laporan Keuangan</span>
+            </a>
 
-        <!-- Card 2: Kas Keliling -->
-        <div class="glass-panel metric-card">
-            <div class="card-top">
-                <span class="card-tag">Kas Keliling</span>
-                <div class="card-icon icon-keliling"><i class="fa-solid fa-hand-holding-dollar"></i></div>
-            </div>
-            <div class="card-amount val-keliling" id="valKasKeliling">Rp 0</div>
-            <div class="card-desc">Kas Operasional Bulanan</div>
-        </div>
+            <div class="nav-section-title">Kegiatan & Administrasi</div>
+            <a href="#" class="nav-item" data-route="absensi">
+                <i class="fa-solid fa-clipboard-user"></i>
+                <span>Absensi</span>
+            </a>
+            <a href="#" class="nav-item" data-route="catatan">
+                <i class="fa-solid fa-book-bookmark"></i>
+                <span>Catatan Bebas</span>
+            </a>
+            <a href="#" class="nav-item" data-route="pengaturan">
+                <i class="fa-solid fa-sliders"></i>
+                <span>Pengaturan</span>
+            </a>
+        </nav>
 
-        <!-- Card 3: Kas Anniversary -->
-        <div class="glass-panel metric-card">
-            <div class="card-top">
-                <span class="card-tag">Kas Anniversary</span>
-                <div class="card-icon icon-aniv"><i class="fa-solid fa-cake-candles"></i></div>
-            </div>
-            <div class="card-amount val-aniv" id="valKasAniv">Rp 0</div>
-            <div class="card-desc">Iuran Acara Anniversary</div>
-        </div>
-
-        <!-- Card 4: Saldo Cicilan -->
-        <div class="glass-panel metric-card">
-            <div class="card-top">
-                <span class="card-tag">Saldo Cicilan</span>
-                <div class="card-icon icon-cicilan"><i class="fa-solid fa-receipt"></i></div>
-            </div>
-            <div class="card-amount val-cicilan" id="valSaldoCicilan">Rp 0</div>
-            <div class="card-desc">Sisa Tagihan / Arisan</div>
-        </div>
-    </section>
-
-    <!-- Detailed Breakdown Grid -->
-    <section class="breakdown-grid">
-        <!-- Rincian Kas Utama -->
-        <div class="glass-panel breakdown-card">
-            <div class="breakdown-header">
-                <i class="fa-solid fa-chart-pie" style="color: #34d399; font-size: 18px;"></i>
-                <h2>Rincian Kas Utama</h2>
-            </div>
-            <div class="breakdown-list">
-                <div class="breakdown-item">
-                    <span class="label">Total Pemasukan Kas</span>
-                    <span class="num" style="color: #34d399;" id="valPemasukanKas">Rp 0</span>
+        <div class="sidebar-footer">
+            <div class="user-profile-badge">
+                <div class="user-avatar" id="sidebarUserAvatar">N</div>
+                <div class="user-info">
+                    <div class="user-name" id="sidebarUserName">Guest (Tamu)</div>
+                    <div class="user-role" id="sidebarUserRole">BACA SAJA</div>
                 </div>
-                <div class="breakdown-item">
-                    <span class="label">Total Pengeluaran Kas</span>
-                    <span class="num" style="color: #f87171;" id="valPengeluaranKas">Rp 0</span>
-                </div>
-                <div class="breakdown-item" style="border-left: 3px solid #34d399;">
-                    <span class="label" style="font-weight: 700; color: #f8fafc;">Saldo Bersih Kas Utama</span>
-                    <span class="num val-kas" id="valSaldoBersihKas">Rp 0</span>
-                </div>
+                <button class="btn-icon" style="width: 32px; height: 32px; border-radius: 8px;" onclick="handleAuthAction()" title="Login / Logout">
+                    <i class="fa-solid fa-right-to-bracket" id="sidebarAuthIcon"></i>
+                </button>
             </div>
         </div>
+    </aside>
 
-        <!-- Rincian Kas Keliling -->
-        <div class="glass-panel breakdown-card">
-            <div class="breakdown-header">
-                <i class="fa-solid fa-chart-line" style="color: #38bdf8; font-size: 18px;"></i>
-                <h2>Rincian Kas Keliling</h2>
-            </div>
-            <div class="breakdown-list">
-                <div class="breakdown-item">
-                    <span class="label">Pemasukan Keliling</span>
-                    <span class="num" style="color: #38bdf8;" id="valPemasukanKeliling">Rp 0</span>
-                </div>
-                <div class="breakdown-item">
-                    <span class="label">Pengeluaran Keliling</span>
-                    <span class="num" style="color: #f87171;" id="valPengeluaranKeliling">Rp 0</span>
-                </div>
-                <div class="breakdown-item" style="border-left: 3px solid #38bdf8;">
-                    <span class="label" style="font-weight: 700; color: #f8fafc;">Saldo Bersih Keliling</span>
-                    <span class="num val-keliling" id="valSaldoBersihKeliling">Rp 0</span>
+    <!-- Main Content App -->
+    <main class="app-main">
+        <!-- Top Sticky Bar -->
+        <header class="app-topbar">
+            <div class="topbar-left">
+                <button class="menu-toggle-btn" id="menuToggleBtn">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="page-title-box">
+                    <h2 id="pageTitle">Dashboard Utama</h2>
+                    <p id="pageDesc">Rangkuman Keuangan & Statistik Komunitas</p>
                 </div>
             </div>
-        </div>
-    </section>
 
-    <!-- Quick Info Strip -->
-    <section class="glass-panel info-strip">
-        <div class="info-group">
-            <i class="fa-solid fa-user-check"></i>
-            <div>
-                <div class="title">Status Sistem</div>
-                <div class="data">Multi-Platform Ready</div>
+            <div class="topbar-right">
+                <div class="status-pill">
+                    <div class="dot-pulse"></div>
+                    <span id="apiStatusText">Live API Active</span>
+                </div>
+                <button class="btn-icon" onclick="navigate(currentRoute)" title="Refresh Halaman">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+                <a href="api/get_dashboard.php" target="_blank" class="btn-icon" title="Cek JSON API">
+                    <i class="fa-solid fa-code"></i>
+                </a>
+            </div>
+        </header>
+
+        <!-- Dynamic Page Container -->
+        <div class="page-container" id="mainContentArea">
+            <!-- Content will be injected dynamically by app.js -->
+        </div>
+
+        <!-- Footer -->
+        <footer style="padding: 20px 28px; text-align: center; font-size: 12px; color: var(--text-dim); border-top: 1px solid var(--border-glass);">
+            NEBO Sukabumi &copy; 2026 &bull; Web Platform Terintegrasi API cPanel MySQL &bull; <a href="https://nebosukabumi.net" style="color: var(--primary); text-decoration: none;">nebosukabumi.net</a>
+        </footer>
+    </main>
+
+    <!-- Modal Login -->
+    <div class="modal-backdrop" id="modalLogin">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Masuk ke Akun NEBO</h3>
+                <button class="btn-icon" style="width: 32px; height: 32px;" onclick="closeModal('modalLogin')">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form onsubmit="handleLoginSubmit(event)">
+                <div class="modal-body">
+                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                        Silakan login menggunakan <strong>NRA / Username</strong> dan password Anda.
+                    </p>
+                    <div class="form-group">
+                        <label class="form-label">Username atau NRA</label>
+                        <input type="text" name="username" class="form-control" required placeholder="Contoh: admin atau NEBO-001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" name="password" class="form-control" required placeholder="Masukkan kata sandi">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modalLogin')">Batal</button>
+                    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-right-to-bracket"></i> Masuk</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Dynamic / CRUD -->
+    <div class="modal-backdrop" id="modalDynamic">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Form Data</h3>
+                <button class="btn-icon" style="width: 32px; height: 32px;" onclick="closeModal('modalDynamic')">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Content injected dynamically -->
             </div>
         </div>
-        <div class="info-group">
-            <i class="fa-solid fa-mobile-screen-button"></i>
-            <div>
-                <div class="title">APK Compatibility</div>
-                <div class="data">Android Kotlin (Sync 100%)</div>
-            </div>
-        </div>
-        <div class="info-group">
-            <i class="fa-solid fa-database"></i>
-            <div>
-                <div class="title">Database cPanel</div>
-                <div class="data">MySQLi & PDO Active</div>
-            </div>
-        </div>
-        <div class="info-group">
-            <i class="fa-solid fa-wifi"></i>
-            <div>
-                <div class="title">Respon API Latency</div>
-                <div class="data" id="valLatency">~ ms</div>
-            </div>
-        </div>
-    </section>
+    </div>
 
-    <!-- Actions Bar -->
-    <section class="actions-bar">
-        <button class="btn btn-primary" id="btnRefreshNow" onclick="fetchDashboardData(true)">
-            <i class="fa-solid fa-arrows-rotate" id="refreshIcon"></i>
-            <span>Refresh Data Sekarang</span>
-        </button>
-        <a href="api/get_dashboard.php" target="_blank" class="btn btn-secondary">
-            <i class="fa-solid fa-code"></i>
-            <span>Buka JSON Endpoint</span>
-        </a>
-    </section>
+    <!-- Toast Notifications Container -->
+    <div class="toast-container" id="toastContainer"></div>
 
-    <!-- Footer -->
-    <footer class="footer">
-        NEBO Sukabumi &copy; 2026 &bull; REST API Endpoint: <code>https://nebosukabumi.net/api/get_dashboard.php</code>
-    </footer>
-
-</div>
-
-<!-- Toast Box -->
-<div class="toast" id="toastBox">
-    <i class="fa-solid fa-circle-check" style="color: #34d399;"></i>
-    <span id="toastMsg">Data berhasil disinkronkan!</span>
-</div>
-
-<script>
-    // Format Angka ke Rupiah Indonesia
-    function formatRupiah(nominal) {
-        const num = Number(nominal) || 0;
-        return 'Rp ' + num.toLocaleString('id-ID');
-    }
-
-    // Tampilkan Notifikasi Toast
-    function showToast(msg) {
-        const toast = document.getElementById('toastBox');
-        const msgEl = document.getElementById('toastMsg');
-        msgEl.innerText = msg;
-        toast.classList.add('show');
-        setTimeout(() => {
-            toast.classList.remove('show');
-        }, 2500);
-    }
-
-    // Ambil Data Dashboard dari Backend
-    async function fetchDashboardData(isManual = false) {
-        const refreshIcon = document.getElementById('refreshIcon');
-        if (refreshIcon) refreshIcon.classList.add('fa-spin');
-
-        const startTime = performance.now();
-        
-        // Prioritas URL: api/get_dashboard.php -> fallback /api/get_dashboard.php
-        const urlsToTry = [
-            'api/get_dashboard.php',
-            '/api/get_dashboard.php',
-            'get_dashboard.php',
-            'https://nebosukabumi.net/api/get_dashboard.php'
-        ];
-
-        let payload = null;
-        let fetchSuccess = false;
-
-        for (const url of urlsToTry) {
-            try {
-                const response = await fetch(url + '?t=' + Date.now(), {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache'
-                    },
-                    cache: 'no-store'
-                });
-
-                if (response.ok) {
-                    const json = await response.json();
-                    if (json && (json.status === 'success' || json.data || json.saldo_kas_utama !== undefined || json.kas_keliling !== undefined)) {
-                        payload = json.data || json;
-                        fetchSuccess = true;
-                        break;
-                    }
-                }
-            } catch (e) {
-                // Try next URL in fallback list
-            }
-        }
-
-        const endTime = performance.now();
-        const latency = Math.round(endTime - startTime);
-        document.getElementById('valLatency').innerText = latency + ' ms';
-
-        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
-
-        if (fetchSuccess && payload) {
-            // 1. Ekstrak Nilai Presisi
-            const saldoKasUtama = Number(payload.saldo_kas_utama ?? payload.saldo_kas ?? 0);
-            const kasKeliling = Number(payload.kas_keliling ?? payload.saldo_kas_keliling ?? 0);
-            const kasAniv = Number(payload.kas_anniversary ?? payload.total_anniversary ?? 0);
-            const saldoCicilan = Number(payload.saldo_cicilan ?? payload.total_sisa_cicilan ?? 0);
-            const totalSaldo = Number(payload.total_saldo ?? (saldoKasUtama + kasKeliling + kasAniv + saldoCicilan));
-            const totalAnggota = Number(payload.total_anggota ?? 0);
-
-            const pemasukanKas = Number(payload.pemasukan_kas_utama ?? payload.pemasukan_kas ?? saldoKasUtama);
-            const pengeluaranKas = Number(payload.pengeluaran_kas_utama ?? payload.pengeluaran_kas ?? 0);
-
-            const pemasukanKeliling = Number(payload.pemasukan_kas_keliling ?? payload.pemasukan_kas ?? kasKeliling);
-            const pengeluaranKeliling = Number(payload.pengeluaran_kas_keliling ?? payload.pengeluaran_kas ?? 0);
-
-            // 2. Render ke Tampilan Web Glassmorphism
-            document.getElementById('valTotalSaldo').innerText = formatRupiah(totalSaldo);
-            document.getElementById('valTotalAnggota').innerText = totalAnggota;
-            
-            document.getElementById('valSaldoKas').innerText = formatRupiah(saldoKasUtama);
-            document.getElementById('valKasKeliling').innerText = formatRupiah(kasKeliling);
-            document.getElementById('valKasAniv').innerText = formatRupiah(kasAniv);
-            document.getElementById('valSaldoCicilan').innerText = formatRupiah(saldoCicilan);
-
-            document.getElementById('valPemasukanKas').innerText = formatRupiah(pemasukanKas);
-            document.getElementById('valPengeluaranKas').innerText = formatRupiah(pengeluaranKas);
-            document.getElementById('valSaldoBersihKas').innerText = formatRupiah(saldoKasUtama);
-
-            document.getElementById('valPemasukanKeliling').innerText = formatRupiah(pemasukanKeliling);
-            document.getElementById('valPengeluaranKeliling').innerText = formatRupiah(pengeluaranKeliling);
-            document.getElementById('valSaldoBersihKeliling').innerText = formatRupiah(kasKeliling);
-
-            const now = new Date();
-            document.getElementById('valLastSync').innerText = now.toLocaleTimeString('id-ID');
-            document.getElementById('apiStatusText').innerText = 'Server API Online';
-
-            if (isManual) {
-                showToast('Data berhasil diperbarui secara real-time!');
-            }
-        } else {
-            document.getElementById('apiStatusText').innerText = 'Menggunakan Cache Lokal';
-            if (isManual) {
-                showToast('Gagal terhubung ke API server!');
-            }
-        }
-    }
-
-    // Auto Refresh Timer (Setiap 30 Detik)
-    let countdown = 30;
-    setInterval(() => {
-        countdown--;
-        const cdEl = document.getElementById('valCountdown');
-        if (cdEl) cdEl.innerText = countdown + 's';
-        if (countdown <= 0) {
-            countdown = 30;
-            fetchDashboardData(false);
-        }
-    }, 1000);
-
-    // Initial Load
-    document.addEventListener('DOMContentLoaded', () => {
-        fetchDashboardData(false);
-    });
-</script>
-
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>

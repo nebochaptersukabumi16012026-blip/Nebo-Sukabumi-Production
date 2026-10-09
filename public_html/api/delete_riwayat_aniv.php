@@ -1,5 +1,5 @@
 <?php
-// delete_riwayat_aniv.php
+// delete_riwayat_aniv.php - Endpoint hapus riwayat anniversary dengan validasi DB
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: POST, DELETE, GET, OPTIONS");
@@ -16,170 +16,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 include_once 'config.php';
 include_once 'sync_helper.php';
 
+if (!isset($pdo) && isset($conn)) {
+    $pdo = $conn;
+}
+
+// 1. BACA PARAMETER TERBUKA (POST, JSON Body, GET)
 $rawInput = file_get_contents("php://input");
-$data = json_decode($rawInput);
+$data = json_decode($rawInput, true) ?: array();
 
 // 1. OTORISASI: ADMIN, BENDAHARA, DEVELOPER
 $role = '';
-if (isset($data->user_role)) {
-    $role = trim($data->user_role);
-} elseif (isset($data->role)) {
-    $role = trim($data->role);
-} elseif (isset($data->token_role)) {
-    $role = trim($data->token_role);
-} elseif (isset($_POST['user_role'])) {
-    $role = trim($_POST['user_role']);
-} elseif (isset($_POST['role'])) {
-    $role = trim($_POST['role']);
-} elseif (isset($_GET['user_role'])) {
-    $role = trim($_GET['user_role']);
-} elseif (isset($_GET['role'])) {
-    $role = trim($_GET['role']);
-}
+if (!empty($data['user_role'])) $role = trim($data['user_role']);
+elseif (!empty($data['role'])) $role = trim($data['role']);
+elseif (!empty($_POST['user_role'])) $role = trim($_POST['user_role']);
+elseif (!empty($_POST['role'])) $role = trim($_POST['role']);
+elseif (!empty($_GET['user_role'])) $role = trim($_GET['user_role']);
+elseif (!empty($_GET['role'])) $role = trim($_GET['role']);
 
 $role_upper = strtoupper($role);
-if (!empty($role) && $role_upper !== 'DEVELOPER' && $role_upper !== 'ADMIN' && $role_upper !== 'BENDAHARA') {
+if (!empty($role) && $role_upper !== 'DEVELOPER' && $role_upper !== 'ADMIN' && $role_upper !== 'BENDAHARA' && $role_upper !== 'PENGURUS') {
     http_response_code(403);
     echo json_encode(array(
-        "status" => "error",
+        "status" => false,
         "message" => "Akses Ditolak: Hanya ADMIN dan BENDAHARA yang dapat menghapus riwayat anniversary."
     ));
     exit();
 }
 
-// 2. PARSE ID TRANSAKSI & ID ANGGOTA
-$raw_id = '';
-if (isset($data->id_transaksi)) {
-    $raw_id = strval($data->id_transaksi);
-} elseif (isset($_GET['id_transaksi'])) {
-    $raw_id = strval($_GET['id_transaksi']);
-} elseif (isset($_POST['id_transaksi'])) {
-    $raw_id = strval($_POST['id_transaksi']);
-} elseif (isset($data->id)) {
-    $raw_id = strval($data->id);
-} elseif (isset($_GET['id'])) {
-    $raw_id = strval($_GET['id']);
-} elseif (isset($_POST['id'])) {
-    $raw_id = strval($_POST['id']);
-}
-
+// 2. PARSE ID TRANSAKSI
 $id = 0;
-$extractedMemberId = 0;
-if (strpos($raw_id, 'aniv_') === 0) {
-    $extractedNum = intval(substr($raw_id, 5));
-    $id = $extractedNum;
-    $extractedMemberId = $extractedNum;
-} else {
-    $id = intval($raw_id);
-}
+if (isset($data['id_aniv']) && intval($data['id_aniv']) > 0) $id = intval($data['id_aniv']);
+elseif (isset($data['id_transaksi']) && intval($data['id_transaksi']) > 0) $id = intval($data['id_transaksi']);
+elseif (isset($data['id']) && intval($data['id']) > 0) $id = intval($data['id']);
+elseif (isset($_POST['id_aniv']) && intval($_POST['id_aniv']) > 0) $id = intval($_POST['id_aniv']);
+elseif (isset($_POST['id_transaksi']) && intval($_POST['id_transaksi']) > 0) $id = intval($_POST['id_transaksi']);
+elseif (isset($_POST['id']) && intval($_POST['id']) > 0) $id = intval($_POST['id']);
+elseif (isset($_GET['id_aniv']) && intval($_GET['id_aniv']) > 0) $id = intval($_GET['id_aniv']);
+elseif (isset($_GET['id_transaksi']) && intval($_GET['id_transaksi']) > 0) $id = intval($_GET['id_transaksi']);
+elseif (isset($_GET['id']) && intval($_GET['id']) > 0) $id = intval($_GET['id']);
 
-$id_anggota = 0;
-if (isset($data->id_anggota)) {
-    $id_anggota = intval($data->id_anggota);
-} elseif (isset($data->anggota_id)) {
-    $id_anggota = intval($data->anggota_id);
-} elseif (isset($data->anggotaId)) {
-    $id_anggota = intval($data->anggotaId);
-} elseif (isset($_POST['id_anggota'])) {
-    $id_anggota = intval($_POST['id_anggota']);
-} elseif (isset($_POST['anggota_id'])) {
-    $id_anggota = intval($_POST['anggota_id']);
-} elseif (isset($_GET['id_anggota'])) {
-    $id_anggota = intval($_GET['id_anggota']);
-} elseif (isset($_GET['anggota_id'])) {
-    $id_anggota = intval($_GET['anggota_id']);
-}
-
-if ($id_anggota <= 0 && $extractedMemberId > 0) {
-    $id_anggota = $extractedMemberId;
-}
-
-if ($id <= 0 && $id_anggota <= 0) {
+if ($id <= 0) {
     http_response_code(400);
     echo json_encode(array(
-        "status" => "error",
-        "message" => "ID transaksi atau ID Anggota tidak valid"
+        "status" => false,
+        "message" => "ID transaksi anniversary tidak valid atau tidak terdeteksi"
     ));
     exit();
 }
 
 try {
-    $conn->beginTransaction();
+    if (method_exists($pdo, 'beginTransaction')) {
+        $pdo->beginTransaction();
+    }
 
-    // Temukan ID Anggota jika belum ada
-    if ($id > 0 && $id_anggota <= 0) {
-        $stmt_find = $conn->prepare("SELECT id_anggota FROM riwayat_aniv WHERE id = ?");
-        $stmt_find->execute(array($id));
-        $row_ra = $stmt_find->fetch(PDO::FETCH_ASSOC);
-        if ($row_ra) {
-            $id_anggota = intval($row_ra['id_anggota']);
-        } else {
-            $stmt_find_pem = $conn->prepare("SELECT anggotaId FROM pembayaran WHERE id = ?");
-            $stmt_find_pem->execute(array($id));
-            $row_pem = $stmt_find_pem->fetch(PDO::FETCH_ASSOC);
-            if ($row_pem) {
-                $id_anggota = intval($row_pem['anggotaId']);
-            }
+    $rowCount = 0;
+
+    // Hapus dari riwayat_aniv
+    $stmt_del_ra = $pdo->prepare("DELETE FROM riwayat_aniv WHERE id = ?");
+    $stmt_del_ra->execute(array($id));
+    $rowCount += $stmt_del_ra->rowCount();
+
+    // Hapus dari pembayaran
+    $stmt_del_pem = $pdo->prepare("DELETE FROM pembayaran WHERE id = ?");
+    $stmt_del_pem->execute(array($id));
+    $rowCount += $stmt_del_pem->rowCount();
+
+    // Hapus dari iuran_anniversary
+    $stmt_del_ia = $pdo->prepare("DELETE FROM iuran_anniversary WHERE id = ?");
+    $stmt_del_ia->execute(array($id));
+    $rowCount += $stmt_del_ia->rowCount();
+
+    // VALIDASI SIKLUS DATABASE: Gunakan rowCount > 0
+    if ($rowCount > 0) {
+        if (method_exists($pdo, 'inTransaction') && $pdo->inTransaction()) {
+            $pdo->commit();
         }
+        http_response_code(200);
+        echo json_encode(array(
+            "status" => true,
+            "message" => "Data berhasil dihapus dari database"
+        ));
+    } else {
+        if (method_exists($pdo, 'inTransaction') && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        http_response_code(400);
+        echo json_encode(array(
+            "status" => false,
+            "message" => "Gagal menghapus riwayat anniversary: ID tidak ditemukan atau 0 baris terhapus"
+        ));
     }
 
-    // A. HAPUS BARIS TRANSAKSI SPESIFIK DARI TABEL riwayat_aniv, pembayaran, dan iuran_anniversary
-    if ($id > 0) {
-        $stmt_del_ra = $conn->prepare("DELETE FROM riwayat_aniv WHERE id = ?");
-        $stmt_del_ra->execute(array($id));
-
-        $stmt_del_pem = $conn->prepare("DELETE FROM pembayaran WHERE id = ?");
-        $stmt_del_pem->execute(array($id));
-
-        $stmt_del_ia = $conn->prepare("DELETE FROM iuran_anniversary WHERE id = ?");
-        $stmt_del_ia->execute(array($id));
-    }
-
-    // B. JIKA ID <= 0 DAN ID ANGGOTA VALID (HAPUS SEMUA RIWAYAT ANIV ANGGOTA TERSEBUT)
-    if ($id <= 0 && $id_anggota > 0) {
-        $stmt_del_all_ra = $conn->prepare("DELETE FROM riwayat_aniv WHERE id_anggota = ?");
-        $stmt_del_all_ra->execute(array($id_anggota));
-
-        $stmt_del_all_ia = $conn->prepare("DELETE FROM iuran_anniversary WHERE anggota_id = ?");
-        $stmt_del_all_ia->execute(array($id_anggota));
-
-        $stmt_del_all_pem = $conn->prepare("DELETE FROM pembayaran WHERE anggotaId = ? AND UPPER(jenisPembayaran) = 'ANIV'");
-        $stmt_del_all_pem->execute(array($id_anggota));
-    }
-
-    // C. AKUMULASI ANGGOTA DAN SALDO UTAMA TETAP UTUH (NON-DECREASING)
-    // Nominal iuran_aniv anggota di profil dan saldo akumulasi di dashboard utama tidak dikurangi saat riwayat dihapus.
-
-    $conn->commit();
-
-    // D. KEMBALIKAN RESPONSE JSON SUKSES
-    http_response_code(200);
-    echo json_encode(array(
-        "status" => "success",
-        "message" => "Riwayat berhasil dihapus",
-        "deleted_id" => $id,
-        "id_anggota" => $id_anggota
-    ));
-
-} catch (PDOException $e) {
-    if (isset($conn) && $conn->inTransaction()) {
-        $conn->rollBack();
+} catch (Throwable $e) {
+    if (isset($pdo) && method_exists($pdo, 'inTransaction') && $pdo->inTransaction()) {
+        $pdo->rollBack();
     }
     http_response_code(500);
     echo json_encode(array(
-        "status" => "error",
-        "message" => "Gagal menghapus riwayat dari database",
-        "db_error" => $e->getMessage()
-    ));
-} catch (Exception $e) {
-    if (isset($conn) && $conn->inTransaction()) {
-        $conn->rollBack();
-    }
-    http_response_code(500);
-    echo json_encode(array(
-        "status" => "error",
-        "message" => "Gagal menghapus riwayat dari database",
-        "db_error" => $e->getMessage()
+        "status" => false,
+        "message" => "Gagal menghapus riwayat dari database: " . $e->getMessage()
     ));
 }
 ?>

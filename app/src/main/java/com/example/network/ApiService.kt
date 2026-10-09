@@ -308,6 +308,9 @@ interface ApiService {
     @HTTP(method = "DELETE", path = "cicilan.php", hasBody = true)
     suspend fun deleteCicilan(@Body req: Map<String, Int>): Response<BaseResponse<Any>>
 
+    @POST("hapus_cicilan.php")
+    suspend fun hapusCicilan(@Body req: Map<String, @JvmSuppressWildcards Any?>): Response<BaseResponse<Any>>
+
     @GET("absensi.php")
     suspend fun getAbsensi(): Response<BaseResponse<List<AbsensiDto>>>
 

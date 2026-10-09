@@ -843,7 +843,7 @@ fun DetailIuranAnivScreen(navController: NavController, viewModel: CommunityView
     val totalPemasukanAniv = dashboardData?.total_aniv ?: anggotaList.sumOf { it.iuranAniv }
     val totalAniv = totalPemasukanAniv - totalPengeluaranAniv
     
-    val anivPayments = anggotaList.filter { it.iuranAniv > 0.0 }
+    val anivPayments = anggotaList.filter { it.iuranAniv > 0.0 }.distinctBy { it.id }
 
     val filteredList = anivPayments.filter {
         it.nama.contains(searchQuery, ignoreCase = true)
@@ -1311,7 +1311,7 @@ fun DetailBelumKasScreen(navController: NavController, viewModel: CommunityViewM
     val settings by viewModel.communitySettings.collectAsState()
     
     val targetKas = settings.target_kas
-    val unpaidMembers = if (targetKas > 0.0) anggotaList.filter { it.uangKas < targetKas } else anggotaList.filter { it.uangKas == 0.0 }
+    val unpaidMembers = (if (targetKas > 0.0) anggotaList.filter { it.uangKas < targetKas } else anggotaList.filter { it.uangKas == 0.0 }).distinctBy { it.id }
     
     val filteredList = unpaidMembers.filter {
         it.nama.contains(searchQuery, ignoreCase = true)
@@ -1407,7 +1407,7 @@ fun DetailBelumAnivScreen(navController: NavController, viewModel: CommunityView
     val settings by viewModel.communitySettings.collectAsState()
     
     val targetAniv = settings.target_aniv
-    val unpaidMembers = if (targetAniv > 0.0) anggotaList.filter { it.iuranAniv < targetAniv } else anggotaList.filter { it.iuranAniv == 0.0 }
+    val unpaidMembers = (if (targetAniv > 0.0) anggotaList.filter { it.iuranAniv < targetAniv } else anggotaList.filter { it.iuranAniv == 0.0 }).distinctBy { it.id }
     
     val filteredList = unpaidMembers.filter {
         it.nama.contains(searchQuery, ignoreCase = true)

@@ -329,9 +329,10 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    val uniqueMemberList = memberList.distinctBy { it.id }
                     withContext(Dispatchers.Main) {
-                        viewModel.setAllAnggota(memberList)
-                        onComplete?.invoke(memberList)
+                        viewModel.setAllAnggota(uniqueMemberList)
+                        onComplete?.invoke(uniqueMemberList)
                     }
                 } else {
                     withContext(Dispatchers.Main) {
