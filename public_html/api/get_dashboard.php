@@ -82,32 +82,51 @@ try {
     $pemasukan_kas_utama = 0.0;
     $pengeluaran_kas_utama = 0.0;
 
-    // Cek tabel 'kas'
-    $q_kas_table = $db->query("SELECT IFNULL(SUM(pemasukan), 0) AS total_in, IFNULL(SUM(pengeluaran), 0) AS total_out FROM kas");
-    if ($q_kas_table && $d_kas_table = $q_kas_table->fetch(PDO::FETCH_ASSOC)) {
-        $pemasukan_kas_utama = floatval($d_kas_table['total_in'] ?? 0.0);
-        $pengeluaran_kas_utama = floatval($d_kas_table['total_out'] ?? 0.0);
+    // Pengecekan aman apakah tabel 'kas' tersedia di database sebelum query
+    $hasKasTable = false;
+    try {
+        $checkKasTable = $db->query("SHOW TABLES LIKE 'kas'");
+        if ($checkKasTable && $checkKasTable->rowCount() > 0) {
+            $hasKasTable = true;
+        }
+    } catch (Throwable $e) {
+        $hasKasTable = false;
     }
 
-    // Cek saldo_akumulasi / anggota / riwayat_kas jika pemasukan masih 0
-    if ($pemasukan_kas_utama <= 0.0) {
-        $stmt_sa = $db->query("SELECT total_akumulasi_masuk, total_akumulasi_keluar FROM saldo_akumulasi WHERE jenis_kas = 'kas_utama' LIMIT 1");
-        if ($stmt_sa && $row_sa = $stmt_sa->fetch(PDO::FETCH_ASSOC)) {
-            $pemasukan_kas_utama = floatval($row_sa['total_akumulasi_masuk'] ?? 0.0);
-            $pengeluaran_kas_utama = max($pengeluaran_kas_utama, floatval($row_sa['total_akumulasi_keluar'] ?? 0.0));
+    if ($hasKasTable) {
+        // Query hanya jika tabel 'kas' benar-benar ada
+        $q_kas_table = $db->query("SELECT IFNULL(SUM(pemasukan), 0) AS total_in, IFNULL(SUM(pengeluaran), 0) AS total_out FROM kas");
+        if ($q_kas_table && $d_kas_table = $q_kas_table->fetch(PDO::FETCH_ASSOC)) {
+            $pemasukan_kas_utama = floatval($d_kas_table['total_in'] ?? 0.0);
+            $pengeluaran_kas_utama = floatval($d_kas_table['total_out'] ?? 0.0);
         }
-
-        $stmt_ang_kas = $db->query("SELECT IFNULL(SUM(uang_kas), 0) as total FROM anggota");
-        if ($stmt_ang_kas && $row_ang_kas = $stmt_ang_kas->fetch(PDO::FETCH_ASSOC)) {
-            $pemasukan_kas_utama = max($pemasukan_kas_utama, floatval($row_ang_kas['total'] ?? 0.0));
-        }
-
+    } else {
+        // Jika tabel 'kas' tidak ada, gunakan single source of truth yang sudah terverifikasi:
+        // Pemasukan: riwayat_kas (tabel transaksi individual kas) atau master ledger saldo_akumulasi ('kas_utama')
         $stmt_rk = $db->query("SELECT IFNULL(SUM(nominal), 0) as total FROM riwayat_kas");
         if ($stmt_rk && $row_rk = $stmt_rk->fetch(PDO::FETCH_ASSOC)) {
-            $pemasukan_kas_utama = max($pemasukan_kas_utama, floatval($row_rk['total'] ?? 0.0));
+            $pemasukan_kas_utama = floatval($row_rk['total'] ?? 0.0);
+        }
+
+        // Fallback saldo_akumulasi hanya jika riwayat_kas kosong
+        if ($pemasukan_kas_utama <= 0.0) {
+            $stmt_sa = $db->query("SELECT total_akumulasi_masuk, total_akumulasi_keluar FROM saldo_akumulasi WHERE jenis_kas = 'kas_utama' LIMIT 1");
+            if ($stmt_sa && $row_sa = $stmt_sa->fetch(PDO::FETCH_ASSOC)) {
+                $pemasukan_kas_utama = floatval($row_sa['total_akumulasi_masuk'] ?? 0.0);
+                $pengeluaran_kas_utama = floatval($row_sa['total_akumulasi_keluar'] ?? 0.0);
+            }
+        }
+
+        // Fallback anggota.uang_kas hanya jika pemasukan masih 0
+        if ($pemasukan_kas_utama <= 0.0) {
+            $stmt_ang_kas = $db->query("SELECT IFNULL(SUM(uang_kas), 0) as total FROM anggota WHERE uang_kas > 0");
+            if ($stmt_ang_kas && $row_ang_kas = $stmt_ang_kas->fetch(PDO::FETCH_ASSOC)) {
+                $pemasukan_kas_utama = floatval($row_ang_kas['total'] ?? 0.0);
+            }
         }
     }
 
+    // Pengeluaran Kas Utama dari tabel pengeluaran
     if ($pengeluaran_kas_utama <= 0.0) {
         $stmt_out_ku = $db->query("SELECT IFNULL(SUM(nominal), 0) as total FROM pengeluaran WHERE LOWER(jenis_kas) IN ('kas_utama', 'kas utama', 'kas', 'saldo kas', 'uang kas', 'uang_kas') OR (LOWER(jenis_kas) NOT LIKE '%keliling%' AND LOWER(jenis_kas) NOT LIKE '%aniv%' AND LOWER(jenis_kas) NOT LIKE '%anniversary%')");
         if ($stmt_out_ku && $row_oku = $stmt_out_ku->fetch(PDO::FETCH_ASSOC)) {
