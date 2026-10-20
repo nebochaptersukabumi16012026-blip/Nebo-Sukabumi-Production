@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -128,18 +130,14 @@ fun formatRupiah(amount: Double): String {
     return format.format(amount).replace("Rp", "Rp ")
 }
 
-fun parseAmount(value: Any?): Double {
-    return when (value) {
-        is Number -> value.toDouble()
-        is String -> value.toDoubleOrNull() ?: 0.0
-        else -> 0.0
-    }
-}
-
 @Composable
 fun DashboardView() {
     val apiService = remember { ApiService.create() }
-    var dashboardMap by remember { mutableStateOf<Map<String, Any?>?>(null) }
+    var totalSaldo by remember { mutableStateOf(0.0) }
+    var kasUtama by remember { mutableStateOf(0.0) }
+    var kasKeliling by remember { mutableStateOf(0.0) }
+    var kasAniv by remember { mutableStateOf(0.0) }
+    var sisaCicilan by remember { mutableStateOf(0.0) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -147,7 +145,16 @@ fun DashboardView() {
             try {
                 val response = apiService.getDashboard()
                 if (response.isSuccessful) {
-                    dashboardMap = response.body()
+                    val raw = response.body()?.string()
+                    if (!raw.isNullOrEmpty()) {
+                        val obj = JSONObject(raw)
+                        val dataObj = obj.optJSONObject("data") ?: obj
+                        totalSaldo = dataObj.optDouble("total_saldo", 0.0)
+                        kasUtama = dataObj.optDouble("saldo_kas_utama", dataObj.optDouble("saldo_kas", 0.0))
+                        kasKeliling = dataObj.optDouble("kas_keliling", 0.0)
+                        kasAniv = dataObj.optDouble("kas_anniversary", dataObj.optDouble("total_anniversary", 0.0))
+                        sisaCicilan = dataObj.optDouble("saldo_cicilan", dataObj.optDouble("total_sisa_cicilan", 0.0))
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -158,12 +165,6 @@ fun DashboardView() {
             }
         }
     }
-
-    val totalSaldo = parseAmount(dashboardMap?.get("total_saldo") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("total_saldo"))
-    val kasUtama = parseAmount(dashboardMap?.get("saldo_kas_utama") ?: dashboardMap?.get("saldo_kas") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("saldo_kas_utama"))
-    val kasKeliling = parseAmount(dashboardMap?.get("kas_keliling") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("kas_keliling"))
-    val kasAniv = parseAmount(dashboardMap?.get("kas_anniversary") ?: dashboardMap?.get("total_anniversary") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("kas_anniversary"))
-    val sisaCicilan = parseAmount(dashboardMap?.get("saldo_cicilan") ?: dashboardMap?.get("total_sisa_cicilan") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("saldo_cicilan"))
 
     LazyColumn(
         modifier = Modifier
@@ -192,7 +193,7 @@ fun DashboardView() {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        if (isLoading) "Memuat data dari server cPanel..." else "Sinkronisasi Database cPanel Aktif",
+                        if (isLoading) "Memuat dari https://nebosukabumi.net/api/..." else "Sinkronisasi cPanel Terverifikasi",
                         color = Color(0xFF86EFAC),
                         fontSize = 12.sp
                     )
@@ -282,7 +283,7 @@ fun MetricCard(
 @Composable
 fun KasView() {
     val apiService = remember { ApiService.create() }
-    var kasList by remember { mutableStateOf<List<Map<String, Any?>>>(emptyList()) }
+    var kasList by remember { mutableStateOf<List<Pair<String, Double>>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -290,14 +291,35 @@ fun KasView() {
             try {
                 val response = apiService.getKas()
                 if (response.isSuccessful) {
-                    val body = response.body()
-                    if (body is List<*>) {
-                        kasList = body.filterIsInstance<Map<String, Any?>>()
-                    } else if (body is Map<*, *>) {
-                        val dataList = body["data"] ?: body["transaksi"]
-                        if (dataList is List<*>) {
-                            kasList = dataList.filterIsInstance<Map<String, Any?>>()
+                    val raw = response.body()?.string()
+                    if (!raw.isNullOrEmpty()) {
+                        val trimmed = raw.trim()
+                        val list = mutableListOf<Pair<String, Double>>()
+                        if (trimmed.startsWith("[")) {
+                            val jsonArray = JSONArray(trimmed)
+                            for (i in 0 until jsonArray.length()) {
+                                val obj = jsonArray.optJSONObject(i)
+                                if (obj != null) {
+                                    val ket = obj.optString("keterangan", obj.optString("catatan", "Transaksi Kas"))
+                                    val nom = obj.optDouble("nominal", 0.0)
+                                    list.add(ket to nom)
+                                }
+                            }
+                        } else if (trimmed.startsWith("{")) {
+                            val obj = JSONObject(trimmed)
+                            val arr = obj.optJSONArray("data") ?: obj.optJSONArray("transaksi")
+                            if (arr != null) {
+                                for (i in 0 until arr.length()) {
+                                    val item = arr.optJSONObject(i)
+                                    if (item != null) {
+                                        val ket = item.optString("keterangan", item.optString("catatan", "Transaksi Kas"))
+                                        val nom = item.optDouble("nominal", 0.0)
+                                        list.add(ket to nom)
+                                    }
+                                }
+                            }
                         }
+                        kasList = list
                     }
                 }
             } catch (e: Exception) {
@@ -319,12 +341,10 @@ fun KasView() {
         }
         if (kasList.isEmpty()) {
             item {
-                Text(if (isLoading) "Memuat transaksi dari server..." else "Belum ada transaksi kas.", color = Color.Gray, fontSize = 14.sp)
+                Text(if (isLoading) "Memuat transaksi kas dari server..." else "Belum ada transaksi kas.", color = Color.Gray, fontSize = 14.sp)
             }
         } else {
             items(kasList) { item ->
-                val ket = (item["keterangan"] ?: item["catatan"] ?: "Transaksi Kas") as? String ?: "Transaksi Kas"
-                val nom = parseAmount(item["nominal"])
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -336,11 +356,11 @@ fun KasView() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(ket, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text(item.first, fontWeight = FontWeight.Medium, fontSize = 14.sp)
                             Text("Sinkron dari cPanel MySQL", fontSize = 12.sp, color = Color(0xFF10B981))
                         }
                         Text(
-                            formatRupiah(nom),
+                            formatRupiah(item.second),
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1E3A8A)
                         )
@@ -354,7 +374,7 @@ fun KasView() {
 @Composable
 fun AnggotaView() {
     val apiService = remember { ApiService.create() }
-    var anggotaList by remember { mutableStateOf<List<Map<String, Any?>>>(emptyList()) }
+    var anggotaList by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -362,14 +382,37 @@ fun AnggotaView() {
             try {
                 val response = apiService.getAnggota()
                 if (response.isSuccessful) {
-                    val body = response.body()
-                    if (body is List<*>) {
-                        anggotaList = body.filterIsInstance<Map<String, Any?>>()
-                    } else if (body is Map<*, *>) {
-                        val dataList = body["data"] ?: body["anggota"]
-                        if (dataList is List<*>) {
-                            anggotaList = dataList.filterIsInstance<Map<String, Any?>>()
+                    val raw = response.body()?.string()
+                    if (!raw.isNullOrEmpty()) {
+                        val trimmed = raw.trim()
+                        val list = mutableListOf<Triple<String, String, String>>()
+                        if (trimmed.startsWith("[")) {
+                            val jsonArray = JSONArray(trimmed)
+                            for (i in 0 until jsonArray.length()) {
+                                val obj = jsonArray.optJSONObject(i)
+                                if (obj != null) {
+                                    val nama = obj.optString("nama", obj.optString("username", "Anggota"))
+                                    val nra = obj.optString("nra", "NRA-000")
+                                    val status = if (obj.optInt("statusAktif", 1) == 1) "Aktif" else "Nonaktif"
+                                    list.add(Triple(nama, nra, status))
+                                }
+                            }
+                        } else if (trimmed.startsWith("{")) {
+                            val obj = JSONObject(trimmed)
+                            val arr = obj.optJSONArray("data") ?: obj.optJSONArray("anggota")
+                            if (arr != null) {
+                                for (i in 0 until arr.length()) {
+                                    val item = arr.optJSONObject(i)
+                                    if (item != null) {
+                                        val nama = item.optString("nama", item.optString("username", "Anggota"))
+                                        val nra = item.optString("nra", "NRA-000")
+                                        val status = if (item.optInt("statusAktif", 1) == 1) "Aktif" else "Nonaktif"
+                                        list.add(Triple(nama, nra, status))
+                                    }
+                                }
+                            }
                         }
+                        anggotaList = list
                     }
                 }
             } catch (e: Exception) {
@@ -395,9 +438,6 @@ fun AnggotaView() {
             }
         } else {
             items(anggotaList) { item ->
-                val nama = (item["nama"] ?: item["username"] ?: "Anggota") as? String ?: "Anggota"
-                val nra = (item["nra"] ?: "NRA-000") as? String ?: "NRA-000"
-                val status = if ((item["statusAktif"] ?: 1).toString() == "1") "Aktif" else "Nonaktif"
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -409,12 +449,12 @@ fun AnggotaView() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(nama, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Text("NRA: $nra", fontSize = 12.sp, color = Color(0xFF64748B))
+                            Text(item.first, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("NRA: ${item.second}", fontSize = 12.sp, color = Color(0xFF64748B))
                         }
                         AssistChip(
                             onClick = {},
-                            label = { Text(status) },
+                            label = { Text(item.third) },
                             colors = AssistChipDefaults.assistChipColors(
                                 containerColor = Color(0xFFDCFCE7),
                                 labelColor = Color(0xFF166534)
@@ -430,7 +470,9 @@ fun AnggotaView() {
 @Composable
 fun LaporanView() {
     val apiService = remember { ApiService.create() }
-    var laporanMap by remember { mutableStateOf<Map<String, Any?>?>(null) }
+    var totalIn by remember { mutableStateOf(0.0) }
+    var totalOut by remember { mutableStateOf(0.0) }
+    var saldoAkhir by remember { mutableStateOf(0.0) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -438,7 +480,14 @@ fun LaporanView() {
             try {
                 val response = apiService.getLaporan()
                 if (response.isSuccessful) {
-                    laporanMap = response.body()
+                    val raw = response.body()?.string()
+                    if (!raw.isNullOrEmpty()) {
+                        val obj = JSONObject(raw)
+                        val dataObj = obj.optJSONObject("data") ?: obj
+                        totalIn = dataObj.optDouble("total_pemasukan", 0.0)
+                        totalOut = dataObj.optDouble("total_pengeluaran", 0.0)
+                        saldoAkhir = dataObj.optDouble("saldo_akhir", 0.0)
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -449,10 +498,6 @@ fun LaporanView() {
             }
         }
     }
-
-    val totalIn = parseAmount(laporanMap?.get("total_pemasukan") ?: (laporanMap?.get("data") as? Map<*, *>)?.get("total_pemasukan"))
-    val totalOut = parseAmount(laporanMap?.get("total_pengeluaran") ?: (laporanMap?.get("data") as? Map<*, *>)?.get("total_pengeluaran"))
-    val saldoAkhir = parseAmount(laporanMap?.get("saldo_akhir") ?: (laporanMap?.get("data") as? Map<*, *>)?.get("saldo_akhir"))
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
