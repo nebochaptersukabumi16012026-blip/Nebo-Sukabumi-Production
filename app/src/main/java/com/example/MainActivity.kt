@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -58,7 +60,7 @@ fun NeboSukabumiApp() {
                                 color = Color.White
                             )
                             Text(
-                                "Manajemen Kas & Komunitas",
+                                "Manajemen Kas & Komunitas (cPanel Live)",
                                 fontSize = 12.sp,
                                 color = Color(0xFFE2E8F0)
                             )
@@ -126,8 +128,43 @@ fun formatRupiah(amount: Double): String {
     return format.format(amount).replace("Rp", "Rp ")
 }
 
+fun parseAmount(value: Any?): Double {
+    return when (value) {
+        is Number -> value.toDouble()
+        is String -> value.toDoubleOrNull() ?: 0.0
+        else -> 0.0
+    }
+}
+
 @Composable
 fun DashboardView() {
+    val apiService = remember { ApiService.create() }
+    var dashboardMap by remember { mutableStateOf<Map<String, Any?>?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getDashboard()
+                if (response.isSuccessful) {
+                    dashboardMap = response.body()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    val totalSaldo = parseAmount(dashboardMap?.get("total_saldo") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("total_saldo"))
+    val kasUtama = parseAmount(dashboardMap?.get("saldo_kas_utama") ?: dashboardMap?.get("saldo_kas") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("saldo_kas_utama"))
+    val kasKeliling = parseAmount(dashboardMap?.get("kas_keliling") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("kas_keliling"))
+    val kasAniv = parseAmount(dashboardMap?.get("kas_anniversary") ?: dashboardMap?.get("total_anniversary") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("kas_anniversary"))
+    val sisaCicilan = parseAmount(dashboardMap?.get("saldo_cicilan") ?: dashboardMap?.get("total_sisa_cicilan") ?: (dashboardMap?.get("data") as? Map<*, *>)?.get("saldo_cicilan"))
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -148,14 +185,14 @@ fun DashboardView() {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        formatRupiah(35250000.0),
+                        formatRupiah(totalSaldo),
                         color = Color.White,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Sinkronisasi Realtime Terverifikasi",
+                        if (isLoading) "Memuat data dari server cPanel..." else "Sinkronisasi Database cPanel Aktif",
                         color = Color(0xFF86EFAC),
                         fontSize = 12.sp
                     )
@@ -179,14 +216,14 @@ fun DashboardView() {
             ) {
                 MetricCard(
                     title = "Kas Utama",
-                    amount = formatRupiah(18500000.0),
+                    amount = formatRupiah(kasUtama),
                     icon = Icons.Default.AccountBalance,
                     color = Color(0xFF3B82F6),
                     modifier = Modifier.weight(1f).testTag("card_kas_utama")
                 )
                 MetricCard(
                     title = "Kas Keliling",
-                    amount = formatRupiah(6250000.0),
+                    amount = formatRupiah(kasKeliling),
                     icon = Icons.Default.DirectionsCar,
                     color = Color(0xFF10B981),
                     modifier = Modifier.weight(1f).testTag("card_kas_keliling")
@@ -201,14 +238,14 @@ fun DashboardView() {
             ) {
                 MetricCard(
                     title = "Anniversary",
-                    amount = formatRupiah(8500000.0),
+                    amount = formatRupiah(kasAniv),
                     icon = Icons.Default.Celebration,
                     color = Color(0xFFF59E0B),
                     modifier = Modifier.weight(1f).testTag("card_anniversary")
                 )
                 MetricCard(
                     title = "Sisa Cicilan",
-                    amount = formatRupiah(2000000.0),
+                    amount = formatRupiah(sisaCicilan),
                     icon = Icons.Default.CreditCard,
                     color = Color(0xFF8B5CF6),
                     modifier = Modifier.weight(1f).testTag("card_cicilan")
@@ -244,39 +281,70 @@ fun MetricCard(
 
 @Composable
 fun KasView() {
-    val sampleKas = listOf(
-        "Iuran Kas Rutin - Bulan Oktober" to 50000.0,
-        "Kas Keliling Kopdar Sukabumi" to 75000.0,
-        "Iuran Anniversary Ke-5" to 100000.0
-    )
+    val apiService = remember { ApiService.create() }
+    var kasList by remember { mutableStateOf<List<Map<String, Any?>>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getKas()
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body is List<*>) {
+                        kasList = body.filterIsInstance<Map<String, Any?>>()
+                    } else if (body is Map<*, *>) {
+                        val dataList = body["data"] ?: body["transaksi"]
+                        if (dataList is List<*>) {
+                            kasList = dataList.filterIsInstance<Map<String, Any?>>()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Transaksi Kas Terbaru", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Transaksi Kas Terbaru (cPanel Live)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
-        items(sampleKas) { item ->
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                modifier = Modifier.fillMaxWidth().testTag("item_kas")
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+        if (kasList.isEmpty()) {
+            item {
+                Text(if (isLoading) "Memuat transaksi dari server..." else "Belum ada transaksi kas.", color = Color.Gray, fontSize = 14.sp)
+            }
+        } else {
+            items(kasList) { item ->
+                val ket = (item["keterangan"] ?: item["catatan"] ?: "Transaksi Kas") as? String ?: "Transaksi Kas"
+                val nom = parseAmount(item["nominal"])
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth().testTag("item_kas")
                 ) {
-                    Column {
-                        Text(item.first, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                        Text("Terverifikasi & Sinkron", fontSize = 12.sp, color = Color(0xFF10B981))
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(ket, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text("Sinkron dari cPanel MySQL", fontSize = 12.sp, color = Color(0xFF10B981))
+                        }
+                        Text(
+                            formatRupiah(nom),
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E3A8A)
+                        )
                     }
-                    Text(
-                        formatRupiah(item.second),
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E3A8A)
-                    )
                 }
             }
         }
@@ -285,42 +353,74 @@ fun KasView() {
 
 @Composable
 fun AnggotaView() {
-    val sampleAnggota = listOf(
-        Triple("Ahmad Fauzi", "NRA-001", "Aktif"),
-        Triple("Budi Santoso", "NRA-002", "Aktif"),
-        Triple("Cecep Supriatna", "NRA-003", "Aktif")
-    )
+    val apiService = remember { ApiService.create() }
+    var anggotaList by remember { mutableStateOf<List<Map<String, Any?>>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getAnggota()
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body is List<*>) {
+                        anggotaList = body.filterIsInstance<Map<String, Any?>>()
+                    } else if (body is Map<*, *>) {
+                        val dataList = body["data"] ?: body["anggota"]
+                        if (dataList is List<*>) {
+                            anggotaList = dataList.filterIsInstance<Map<String, Any?>>()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Daftar Anggota Komunitas", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Daftar Anggota Komunitas (cPanel Live)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
-        items(sampleAnggota) { item ->
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                modifier = Modifier.fillMaxWidth().testTag("item_anggota")
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+        if (anggotaList.isEmpty()) {
+            item {
+                Text(if (isLoading) "Memuat data anggota dari server..." else "Belum ada data anggota.", color = Color.Gray, fontSize = 14.sp)
+            }
+        } else {
+            items(anggotaList) { item ->
+                val nama = (item["nama"] ?: item["username"] ?: "Anggota") as? String ?: "Anggota"
+                val nra = (item["nra"] ?: "NRA-000") as? String ?: "NRA-000"
+                val status = if ((item["statusAktif"] ?: 1).toString() == "1") "Aktif" else "Nonaktif"
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier.fillMaxWidth().testTag("item_anggota")
                 ) {
-                    Column {
-                        Text(item.first, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("NRA: ${item.second}", fontSize = 12.sp, color = Color(0xFF64748B))
-                    }
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(item.third) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = Color(0xFFDCFCE7),
-                            labelColor = Color(0xFF166534)
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(nama, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("NRA: $nra", fontSize = 12.sp, color = Color(0xFF64748B))
+                        }
+                        AssistChip(
+                            onClick = {},
+                            label = { Text(status) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color(0xFFDCFCE7),
+                                labelColor = Color(0xFF166534)
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -329,44 +429,70 @@ fun AnggotaView() {
 
 @Composable
 fun LaporanView() {
+    val apiService = remember { ApiService.create() }
+    var laporanMap by remember { mutableStateOf<Map<String, Any?>?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getLaporan()
+                if (response.isSuccessful) {
+                    laporanMap = response.body()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    val totalIn = parseAmount(laporanMap?.get("total_pemasukan") ?: (laporanMap?.get("data") as? Map<*, *>)?.get("total_pemasukan"))
+    val totalOut = parseAmount(laporanMap?.get("total_pengeluaran") ?: (laporanMap?.get("data") as? Map<*, *>)?.get("total_pengeluaran"))
+    val saldoAkhir = parseAmount(laporanMap?.get("saldo_akhir") ?: (laporanMap?.get("data") as? Map<*, *>)?.get("saldo_akhir"))
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Laporan Keuangan Terpadu", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Laporan Keuangan Terpadu (cPanel Live)", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
         item {
             Card(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth().testTag("laporan_rekap")
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Ringkasan Neraca", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("Ringkasan Neraca cPanel", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Total Pemasukan:", color = Color(0xFF64748B))
-                        Text(formatRupiah(42000000.0), fontWeight = FontWeight.SemiBold, color = Color(0xFF16A34A))
+                        Text(formatRupiah(totalIn), fontWeight = FontWeight.SemiBold, color = Color(0xFF16A34A))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Total Pengeluaran:", color = Color(0xFF64748B))
-                        Text(formatRupiah(6750000.0), fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                        Text(formatRupiah(totalOut), fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
                     }
-                    Divider(modifier = Modifier.padding(vertical = 12.dp))
+                    Divider(modifier = Modifier.padding(vertical = 14.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Saldo Akhir:", fontWeight = FontWeight.Bold)
-                        Text(formatRupiah(35250000.0), fontWeight = FontWeight.Bold, color = Color(0xFF1E3A8A))
+                        Text("Saldo Akhir:", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(formatRupiah(saldoAkhir), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF1E3A8A))
                     }
                 }
             }
