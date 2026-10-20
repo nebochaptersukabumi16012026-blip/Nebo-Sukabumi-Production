@@ -1,4 +1,1 @@
-<?php
-// input_kas.php
-include_once 'tambah_kas.php';
-?>
+<?php require __DIR__ . '/modules/kas.php'; ?>
