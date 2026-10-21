@@ -64,11 +64,24 @@ try {
     $saldo_kas_utama = max(0.0, $pemasukan_kas_utama - $pengeluaran_kas_utama);
 
     // 4. Kas Keliling (Pemasukan, Pengeluaran, Saldo Bersih)
-    require_once __DIR__ . '/../core/sync_helper.php';
-    $rekap_kk = getKasKelilingSummary($pdo);
-    $pemasukan_kas_keliling   = floatval($rekap_kk['total_pemasukan'] ?? 0);
-    $pengeluaran_kas_keliling = floatval($rekap_kk['total_pengeluaran'] ?? 0);
-    $kas_keliling             = floatval($rekap_kk['saldo'] ?? 0);
+    $stmt_kk = $pdo->query("
+        SELECT 
+            COALESCE(SUM(CASE 
+                WHEN total_pemasukan > 0 THEN total_pemasukan
+                WHEN (total_pemasukan = 0 OR total_pemasukan IS NULL) AND (LOWER(COALESCE(jenis_transaksi, jenis, '')) = 'pemasukan' OR (COALESCE(jenis, '') = '' AND COALESCE(jenis_transaksi, '') = '')) THEN nominal
+                ELSE 0 
+            END), 0) AS in_k,
+            COALESCE(SUM(CASE 
+                WHEN total_pengeluaran > 0 THEN total_pengeluaran
+                WHEN (total_pengeluaran = 0 OR total_pengeluaran IS NULL) AND LOWER(COALESCE(jenis_transaksi, jenis, '')) = 'pengeluaran' THEN nominal
+                ELSE 0 
+            END), 0) AS out_k
+        FROM kas_keliling
+    ");
+    $row_kk = $stmt_kk->fetch(PDO::FETCH_ASSOC);
+    $pemasukan_kas_keliling   = floatval($row_kk['in_k'] ?? 0);
+    $pengeluaran_kas_keliling = floatval($row_kk['out_k'] ?? 0);
+    $kas_keliling             = max(0.0, $pemasukan_kas_keliling - $pengeluaran_kas_keliling);
 
     // 5. Kas Anniversary (Pemasukan, Pengeluaran, Saldo Bersih)
     $pemasukan_aniv = 0.0;
@@ -102,8 +115,8 @@ try {
             COALESCE(SUM(COALESCE(c.total_bayar, a.total_cicilan, 0)), 0) AS total_bayar,
             COALESCE(SUM(CASE 
                 WHEN COALESCE(a.harga_barang, a.hargaBarang, 0) > 0 
-                    THEN (CASE WHEN (COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) > 0 THEN (COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) ELSE 0 END)
-                ELSE (CASE WHEN COALESCE(a.sisa_cicilan, a.sisaCicilan, 0) > 0 THEN COALESCE(a.sisa_cicilan, a.sisaCicilan, 0) ELSE 0 END)
+                    THEN GREATEST(0, COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0))
+                ELSE GREATEST(0, COALESCE(a.sisa_cicilan, a.sisaCicilan, 0))
             END), 0) AS total_sisa,
             COUNT(CASE 
                 WHEN (COALESCE(a.harga_barang, a.hargaBarang, 0) > 0 AND (COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) > 0)

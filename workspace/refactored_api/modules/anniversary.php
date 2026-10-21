@@ -57,8 +57,8 @@ switch ($method) {
 
     case 'POST':
         // Periksa apakah ini permintaan delete via POST (tunneling)
-        $action = $input['action'] ?? ($_GET['action'] ?? ($_POST['action'] ?? ''));
-        if ($action === 'delete' || isset($input['hapus']) || isset($_GET['delete'])) {
+        $action = $input['action'] ?? '';
+        if ($action === 'delete' || isset($input['hapus'])) {
             handleDeleteAniv($pdo, $input);
             break;
         }
@@ -71,7 +71,6 @@ switch ($method) {
         $keterangan = trim($input['keterangan'] ?? 'Iuran Anniversary');
         $tanggal    = $input['tanggal'] ?? date('Y-m-d H:i:s');
         $bukti      = $input['bukti_pembayaran'] ?? ($input['buktiPembayaran'] ?? null);
-        $idempotencyKey = trim($input['idempotency_key'] ?? ($input['request_id'] ?? ($input['firestoreId'] ?? '')));
 
         if ($id_anggota <= 0 || $nominal <= 0) {
             sendResponse(false, "ID Anggota dan nominal (harus > 0) wajib diisi", null, [], 400);
@@ -86,32 +85,16 @@ switch ($method) {
                 sendResponse(false, "Anggota dengan ID $id_anggota tidak ditemukan", null, [], 404);
             }
 
-            // 1. Cek Idempotency Key jika disertakan client
-            if (!empty($idempotencyKey)) {
-                $stmtIdem = $pdo->prepare("SELECT id, nominal FROM pembayaran WHERE firestoreId = ? LIMIT 1");
-                $stmtIdem->execute([$idempotencyKey]);
-                if ($exIdem = $stmtIdem->fetch(PDO::FETCH_ASSOC)) {
-                    $curAniv = recalculateAnggotaAniv($pdo, $id_anggota);
-                    sendResponse(true, "Iuran anniversary sudah tercatat sebelumnya (idempotency key cocok)", [
-                        "id" => (int)$exIdem['id'],
-                        "anggota_id" => $id_anggota,
-                        "nominal" => floatval($exIdem['nominal']),
-                        "total_aniv_sekarang" => $curAniv,
-                        "is_duplicate" => true
-                    ]);
-                }
-            }
-
-            // 2. Anti-Double Submit / Idempotency Window (10 detik dengan nominal & keterangan sama)
+            // Anti-Double Submit / Idempotency Check (15 detik)
             $checkDup = $pdo->prepare("
                 SELECT id, nominal, tanggal FROM iuran_anniversary 
-                WHERE anggota_id = ? AND nominal = ? AND keterangan = ?
+                WHERE anggota_id = ? AND nominal = ? 
                 ORDER BY id DESC LIMIT 1
             ");
-            $checkDup->execute([$id_anggota, $nominal, $keterangan]);
+            $checkDup->execute([$id_anggota, $nominal]);
             if ($existing = $checkDup->fetch(PDO::FETCH_ASSOC)) {
                 $exDate = strtotime($existing['tanggal'] ?? '');
-                if ($exDate > 0 && abs(time() - $exDate) < 10) {
+                if ($exDate > 0 && (time() - $exDate) < 15) {
                     $curAniv = recalculateAnggotaAniv($pdo, $id_anggota);
                     sendResponse(true, "Iuran anniversary sudah tercatat sebelumnya (duplikasi dicegah)", [
                         "id" => (int)$existing['id'],
@@ -213,18 +196,16 @@ function handleDeleteAniv($pdo, $input) {
 
         $targetAnggotaId = 0;
         $targetNominal   = 0;
-        $targetTanggal   = '';
         $originTable     = 'unknown';
         $linkedIaId      = 0;
 
         // 1. Cek di iuran_anniversary (tabel utama)
-        $check_ia = $pdo->prepare("SELECT id, anggota_id, nominal, tanggal FROM iuran_anniversary WHERE id = ?");
+        $check_ia = $pdo->prepare("SELECT id, anggota_id, nominal FROM iuran_anniversary WHERE id = ?");
         $check_ia->execute([$id]);
         if ($row = $check_ia->fetch(PDO::FETCH_ASSOC)) {
             $originTable     = 'iuran_anniversary';
             $targetAnggotaId = intval($row['anggota_id']);
             $targetNominal   = floatval($row['nominal']);
-            $targetTanggal   = $row['tanggal'] ?? '';
             $linkedIaId      = intval($row['id']);
         }
 

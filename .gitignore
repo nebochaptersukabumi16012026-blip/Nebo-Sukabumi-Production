@@ -1,42 +1,18 @@
-# Gradle & Android Build Outputs
 *.iml
-.gradle/
-.kotlin/
+.gradle
+.kotlin
 /local.properties
-local.properties
-/build/
-app/build/
-build/
-.build-outputs/
-/captures/
-.externalNativeBuild/
-.cxx/
-
-# IDE Configuration
-/.idea/
-.vscode/
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
 .DS_Store
-
-# Secrets & Credentials
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
 .env
-.env.*
-!.env.example
 debug.keystore
-debug.keystore.base64
-*.keystore
-*.jks
-config.local.php
-
-# Node & Frontend dependencies
-node_modules/
-dist/
-web/dist/
-web/node_modules/
-
-# Test Databases & Artifacts
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-/tmp/
-.aistudio/artifacts/

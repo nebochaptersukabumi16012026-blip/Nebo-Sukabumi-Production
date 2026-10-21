@@ -1,1 +1,4 @@
-<?php require __DIR__ . '/modules/kas.php'; ?>
+<?php
+// detail_kas.php
+include_once 'get_kas_detail.php';
+?>

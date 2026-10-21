@@ -32,11 +32,24 @@ try {
     $kas_utama_saldo = max(0.0, $kas_utama_in - $kas_utama_out);
 
     // 2. Kas Keliling
-    require_once __DIR__ . '/../core/sync_helper.php';
-    $rekap_kk = getKasKelilingSummary($pdo);
-    $kk_in    = floatval($rekap_kk['total_pemasukan'] ?? 0);
-    $kk_out   = floatval($rekap_kk['total_pengeluaran'] ?? 0);
-    $kk_saldo = floatval($rekap_kk['saldo'] ?? 0);
+    $stmt_kk = $pdo->query("
+        SELECT 
+            COALESCE(SUM(CASE 
+                WHEN total_pemasukan > 0 THEN total_pemasukan
+                WHEN (total_pemasukan = 0 OR total_pemasukan IS NULL) AND (LOWER(COALESCE(jenis_transaksi, jenis, '')) = 'pemasukan' OR (COALESCE(jenis, '') = '' AND COALESCE(jenis_transaksi, '') = '')) THEN nominal
+                ELSE 0 
+            END), 0) AS total_in,
+            COALESCE(SUM(CASE 
+                WHEN total_pengeluaran > 0 THEN total_pengeluaran
+                WHEN (total_pengeluaran = 0 OR total_pengeluaran IS NULL) AND LOWER(COALESCE(jenis_transaksi, jenis, '')) = 'pengeluaran' THEN nominal
+                ELSE 0 
+            END), 0) AS total_out
+        FROM kas_keliling
+    ");
+    $row_kk = $stmt_kk ? $stmt_kk->fetch(PDO::FETCH_ASSOC) : [];
+    $kk_in    = floatval($row_kk['total_in'] ?? 0);
+    $kk_out   = floatval($row_kk['total_out'] ?? 0);
+    $kk_saldo = max(0.0, $kk_in - $kk_out);
 
     // 3. Kas Anniversary
     $stmt_ia = $pdo->query("SELECT COALESCE(SUM(nominal), 0) as total FROM iuran_anniversary");
@@ -53,8 +66,8 @@ try {
             COALESCE(SUM(COALESCE(c.total_bayar, a.total_cicilan, 0)), 0) AS total_sudah_dibayar,
             COALESCE(SUM(CASE 
                 WHEN COALESCE(a.harga_barang, a.hargaBarang, 0) > 0 
-                    THEN (CASE WHEN (COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) > 0 THEN (COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) ELSE 0 END)
-                ELSE (CASE WHEN COALESCE(a.sisa_cicilan, a.sisaCicilan, 0) > 0 THEN COALESCE(a.sisa_cicilan, a.sisaCicilan, 0) ELSE 0 END)
+                    THEN GREATEST(0, COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0))
+                ELSE GREATEST(0, COALESCE(a.sisa_cicilan, a.sisaCicilan, 0))
             END), 0) AS total_sisa_cicilan,
             COUNT(DISTINCT a.nra) AS anggota_mencicil
         FROM anggota a

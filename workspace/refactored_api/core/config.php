@@ -30,22 +30,14 @@ $username = "nebk6483_nebo_user";
 $password = "nfGy7V!RpQkSKY3";
 
 try {
-    if (getenv('NEBO_DB_DSN')) {
-        $pdo = new PDO(getenv('NEBO_DB_DSN'), getenv('NEBO_DB_USER') ?: null, getenv('NEBO_DB_PASS') ?: null, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false
-        ]);
-    } else {
-        $pdo = new PDO("mysql:host={$host};dbname={$db_name};charset=utf8mb4", $username, $password, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false
-        ]);
-    }
+    $pdo = new PDO("mysql:host={$host};dbname={$db_name};charset=utf8mb4", $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false
+    ]);
     $conn = $pdo; // Alias kompatibilitas
 } catch (PDOException $e) {
-    // Fallback jika database belum running
+    // Fallback jika database lokal belum running (misal lingkungan testing non-MySQL)
     error_log("Database connection failed: " . $e->getMessage());
     $pdo = null;
     $conn = null;
@@ -64,12 +56,8 @@ function getRequestBody() {
             $data = $json;
         }
     }
-    // Merge dengan $_POST dan $_GET
+    // Merge dengan $_POST dan $_GET tanpa menimpa data body utama
     $merged = array_merge($_GET, $_POST, $data);
-    if (empty($merged['action'])) {
-        if (!empty($_GET['action'])) $merged['action'] = $_GET['action'];
-        elseif (!empty($_POST['action'])) $merged['action'] = $_POST['action'];
-    }
     return $merged;
 }
 

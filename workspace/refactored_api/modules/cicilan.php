@@ -59,8 +59,8 @@ switch ($method) {
         break;
 
     case 'POST':
-        $action = $input['action'] ?? ($_GET['action'] ?? ($_POST['action'] ?? ''));
-        if ($action === 'delete' || isset($input['hapus']) || isset($_GET['delete'])) {
+        $action = $input['action'] ?? '';
+        if ($action === 'delete' || isset($input['hapus'])) {
             handleDeleteCicilan($pdo, $input);
             break;
         }
@@ -72,7 +72,6 @@ switch ($method) {
         $keterangan = trim($input['keterangan'] ?? 'Pembayaran Cicilan');
         $tanggal    = $input['tanggal'] ?? date('Y-m-d H:i:s');
         $bukti      = $input['bukti_pembayaran'] ?? ($input['buktiPembayaran'] ?? null);
-        $idempotencyKey = trim($input['idempotency_key'] ?? ($input['request_id'] ?? ($input['firestoreId'] ?? '')));
 
         if ($anggota_id <= 0 || $nominal <= 0) {
             sendResponse(false, "ID Anggota dan nominal (harus > 0) wajib diisi", null, [], 400);
@@ -86,33 +85,16 @@ switch ($method) {
                 sendResponse(false, "Anggota tidak ditemukan", null, [], 404);
             }
 
-            // 1. Cek Idempotency Key jika disertakan client
-            if (!empty($idempotencyKey)) {
-                $stmtIdem = $pdo->prepare("SELECT id, nominal FROM pembayaran WHERE firestoreId = ? LIMIT 1");
-                $stmtIdem->execute([$idempotencyKey]);
-                if ($exIdem = $stmtIdem->fetch(PDO::FETCH_ASSOC)) {
-                    list($curTotal, $curSisa) = recalculateAnggotaCicilan($pdo, $anggota_id);
-                    sendResponse(true, "Pembayaran cicilan sudah tercatat sebelumnya (idempotency key cocok)", [
-                        "id" => (int)$exIdem['id'],
-                        "anggota_id" => $anggota_id,
-                        "nominal" => floatval($exIdem['nominal']),
-                        "total_cicilan" => $curTotal,
-                        "sisa_cicilan" => $curSisa,
-                        "is_duplicate" => true
-                    ]);
-                }
-            }
-
-            // 2. Anti-Double Submit / Idempotency Window (10 detik)
+            // Anti-Double Submit / Idempotency Check (15 detik)
             $checkDup = $pdo->prepare("
                 SELECT id, nominal, tanggal FROM cicilan 
-                WHERE anggota_id = ? AND nominal = ? AND keterangan = ?
+                WHERE anggota_id = ? AND nominal = ? 
                 ORDER BY id DESC LIMIT 1
             ");
-            $checkDup->execute([$anggota_id, $nominal, $keterangan]);
+            $checkDup->execute([$anggota_id, $nominal]);
             if ($existing = $checkDup->fetch(PDO::FETCH_ASSOC)) {
                 $exTime = strtotime($existing['tanggal'] ?? '');
-                if ($exTime > 0 && abs(time() - $exTime) < 10) {
+                if ($exTime > 0 && (time() - $exTime) < 15) {
                     list($curTotal, $curSisa) = recalculateAnggotaCicilan($pdo, $anggota_id);
                     sendResponse(true, "Pembayaran cicilan sudah tercatat sebelumnya (duplikasi dicegah)", [
                         "id" => (int)$existing['id'],
@@ -252,8 +234,8 @@ function handleDaftarCicilanAktif($pdo, $input) {
                 COALESCE(c.total_bayar, a.total_cicilan, 0) AS sudah_dibayar,
                 CASE 
                     WHEN COALESCE(a.harga_barang, a.hargaBarang, 0) > 0 
-                        THEN (CASE WHEN (COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) > 0 THEN (COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0)) ELSE 0 END)
-                    ELSE (CASE WHEN COALESCE(a.sisa_cicilan, a.sisaCicilan, 0) > 0 THEN COALESCE(a.sisa_cicilan, a.sisaCicilan, 0) ELSE 0 END)
+                        THEN GREATEST(0, COALESCE(a.harga_barang, a.hargaBarang, 0) - COALESCE(c.total_bayar, a.total_cicilan, 0))
+                    ELSE GREATEST(0, COALESCE(a.sisa_cicilan, a.sisaCicilan, 0))
                 END AS sisa_cicilan,
                 COALESCE(a.cicilan_per_bulan, 0) AS cicilan_per_bulan
             FROM anggota a

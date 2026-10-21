@@ -24,8 +24,8 @@ switch ($method) {
         break;
 
     case 'POST':
-        $action = $input['action'] ?? ($_GET['action'] ?? ($_POST['action'] ?? ''));
-        if ($action === 'delete' || isset($input['hapus']) || isset($_GET['delete'])) {
+        $action = $input['action'] ?? '';
+        if ($action === 'delete' || isset($input['hapus'])) {
             handleDeleteAnggota($pdo, $input);
             break;
         }
@@ -298,19 +298,8 @@ function handleDeleteAnggota($pdo, $input) {
 
     try {
         $pdo->beginTransaction();
-
-        // Bersihkan data transaksi terkait agar tidak ada data yatim/orphan
-        try { $pdo->prepare("DELETE FROM riwayat_kas WHERE id_anggota = ?")->execute([$id]); } catch (Exception $e) {}
-        try { $pdo->prepare("DELETE FROM iuran_anniversary WHERE anggota_id = ?")->execute([$id]); } catch (Exception $e) {}
-        try { $pdo->prepare("DELETE FROM riwayat_aniv WHERE id_anggota = ?")->execute([$id]); } catch (Exception $e) {}
-        try { $pdo->prepare("DELETE FROM cicilan WHERE anggota_id = ?")->execute([$id]); } catch (Exception $e) {}
-        try { $pdo->prepare("DELETE FROM pembayaran WHERE anggotaId = ?")->execute([$id]); } catch (Exception $e) {}
-        try { $pdo->prepare("DELETE FROM absensi WHERE anggota_id = ?")->execute([$id]); } catch (Exception $e) {}
-
         $stmt = $pdo->prepare("DELETE FROM anggota WHERE id = ?");
         $stmt->execute([$id]);
-
-        syncMasterLedger($pdo);
         $pdo->commit();
 
         sendResponse(true, "Data anggota berhasil dihapus", [

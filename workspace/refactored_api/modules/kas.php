@@ -50,8 +50,8 @@ switch ($method) {
 
     case 'POST':
         // Cek jika aksi adalah delete via POST tunneling
-        $action = $input['action'] ?? ($_GET['action'] ?? ($_POST['action'] ?? ''));
-        if ($action === 'delete' || isset($input['hapus']) || isset($_GET['delete'])) {
+        $action = $input['action'] ?? '';
+        if ($action === 'delete' || isset($input['hapus'])) {
             handleDeleteKas($pdo, $input);
             break;
         }
@@ -64,7 +64,6 @@ switch ($method) {
         $keterangan = trim($input['keterangan'] ?? 'Uang Kas');
         $tanggal    = $input['tanggal'] ?? date('Y-m-d H:i:s');
         $bukti      = $input['bukti_pembayaran'] ?? ($input['buktiPembayaran'] ?? null);
-        $idempotencyKey = trim($input['idempotency_key'] ?? ($input['request_id'] ?? ($input['firestoreId'] ?? '')));
 
         if ($id_anggota <= 0 || $nominal <= 0) {
             sendResponse(false, "ID Anggota dan nominal (harus > 0) wajib diisi", null, [], 400);
@@ -78,23 +77,7 @@ switch ($method) {
                 sendResponse(false, "Anggota dengan ID $id_anggota tidak ditemukan", null, [], 404);
             }
 
-            // 1. Cek Idempotency Key jika ada
-            if (!empty($idempotencyKey)) {
-                $stmtIdem = $pdo->prepare("SELECT id, nominal FROM pembayaran WHERE firestoreId = ? LIMIT 1");
-                $stmtIdem->execute([$idempotencyKey]);
-                if ($exIdem = $stmtIdem->fetch(PDO::FETCH_ASSOC)) {
-                    $curKas = recalculateAnggotaKas($pdo, $id_anggota);
-                    sendResponse(true, "Transaksi kas sudah tercatat sebelumnya (idempotency key cocok)", [
-                        "id" => (int)$exIdem['id'],
-                        "anggota_id" => $id_anggota,
-                        "nominal" => floatval($exIdem['nominal']),
-                        "uang_kas_sekarang" => $curKas,
-                        "is_duplicate" => true
-                    ]);
-                }
-            }
-
-            // 2. Anti-Double Submit / Idempotency Window (10 detik dengan nominal & keterangan sama)
+            // Anti-Double Submit / Idempotency Check (15 detik)
             $checkDup = $pdo->prepare("
                 SELECT id, nominal, created_at FROM riwayat_kas 
                 WHERE id_anggota = ? AND nominal = ? AND keterangan = ? 
@@ -103,7 +86,7 @@ switch ($method) {
             $checkDup->execute([$id_anggota, $nominal, $keterangan]);
             if ($existing = $checkDup->fetch(PDO::FETCH_ASSOC)) {
                 $lastTime = intval($existing['created_at'] ?? 0);
-                if ($lastTime > 0 && abs(time() - $lastTime) < 10) {
+                if ($lastTime > 0 && (time() - $lastTime) < 15) {
                     $curKas = recalculateAnggotaKas($pdo, $id_anggota);
                     sendResponse(true, "Transaksi kas sudah tercatat sebelumnya (duplikasi dicegah)", [
                         "id" => (int)$existing['id'],

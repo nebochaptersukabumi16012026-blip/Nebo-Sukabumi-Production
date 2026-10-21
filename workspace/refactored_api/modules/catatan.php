@@ -23,8 +23,8 @@ switch ($method) {
         break;
 
     case 'POST':
-        $action = $input['action'] ?? ($_GET['action'] ?? ($_POST['action'] ?? ''));
-        if ($action === 'delete' || isset($input['hapus']) || isset($_GET['delete'])) {
+        $action = $input['action'] ?? '';
+        if ($action === 'delete' || isset($input['hapus'])) {
             handleDeleteCatatan($pdo, $input);
             break;
         }

@@ -35,8 +35,8 @@ switch ($method) {
         break;
 
     case 'POST':
-        $action = $input['action'] ?? ($_GET['action'] ?? ($_POST['action'] ?? ''));
-        if ($action === 'delete' || isset($input['hapus']) || isset($_GET['delete'])) {
+        $action = $input['action'] ?? '';
+        if ($action === 'delete' || isset($input['hapus'])) {
             handleDeletePengeluaran($pdo, $input);
             break;
         }
@@ -63,7 +63,22 @@ switch ($method) {
             $stmt->execute([$keterangan, $nominal, $tanggal, $jenis_kas, $created_by]);
             $insertedId = $pdo->lastInsertId();
 
-            syncMasterLedger($pdo);
+            // Pembaruan saldo akumulasi (jika tabel digunakan)
+            try {
+                $jenis_mapped = 'kas_utama';
+                $jk_lower = strtolower($jenis_kas);
+                if (strpos($jk_lower, 'aniv') !== false) {
+                    $jenis_mapped = 'kas_aniv';
+                } elseif (strpos($jk_lower, 'keliling') !== false) {
+                    $jenis_mapped = 'kas_keliling';
+                }
+                $stmt_master = $pdo->prepare("
+                    INSERT INTO saldo_akumulasi (jenis_kas, total_akumulasi_keluar) 
+                    VALUES (?, ?) 
+                    ON DUPLICATE KEY UPDATE total_akumulasi_keluar = total_akumulasi_keluar + ?
+                ");
+                $stmt_master->execute([$jenis_mapped, $nominal, $nominal]);
+            } catch (Exception $e_master) {}
 
             $pdo->commit();
 
